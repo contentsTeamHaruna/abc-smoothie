@@ -1,0 +1,1789 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="ABC 스무디" />
+<title>ABC 스무디 — 인터랙션</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; cursor: none; }
+  #stage { position: fixed; inset: 0; background: #000; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  /* 웹캠·회전영상은 캔버스로만 그리고 화면엔 숨김 */
+  #cam, #spin { position: absolute; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
+
+  #overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 22px; z-index: 50;
+    background: radial-gradient(ellipse at center, rgba(20,8,30,.92), rgba(0,0,0,.98));
+    color: #fff; font-family: -apple-system, "Pretendard", "Apple SD Gothic Neo", sans-serif;
+    text-align: center; transition: opacity .6s ease;
+  }
+  #overlay h1 { font-size: 40px; font-weight: 800; letter-spacing: -1px; }
+  #overlay p  { font-size: 18px; color: #c9b8d6; max-width: 520px; line-height: 1.6; }
+  #startBtn {
+    margin-top: 8px; padding: 18px 46px; font-size: 20px; font-weight: 700;
+    color: #2a0f2f; background: linear-gradient(135deg,#ff7a59,#ff3b8d,#9b59ff);
+    border: none; border-radius: 999px; cursor: pointer; box-shadow: 0 10px 40px rgba(255,59,141,.4);
+    transition: transform .15s ease;
+  }
+  #startBtn:active { transform: scale(.96); }
+  #igInput {
+    margin-top: 4px; width: min(360px, 80vw); padding: 14px 20px; font-size: 18px;
+    text-align: center; color: #fff; background: rgba(255,255,255,.08);
+    border: 2px solid rgba(255,255,255,.25); border-radius: 14px; outline: none;
+    font-family: -apple-system,"Pretendard","Apple SD Gothic Neo",sans-serif;
+  }
+  #igInput:focus { border-color: #ff3b8d; background: rgba(255,255,255,.12); }
+  #igInput::placeholder { color: rgba(255,255,255,.4); }
+  #igPanel {
+    display: none; position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    z-index: 45; flex-direction: column; align-items: center; gap: 16px;
+    padding: 34px 40px; border-radius: 24px;
+    background: rgba(10,4,14,.72); border: 1px solid rgba(255,255,255,.18);
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
+    font-family: -apple-system,"Pretendard","Apple SD Gothic Neo",sans-serif;
+  }
+  #igPanel.show { display: flex; }
+  #igPanel, #igInput { cursor: auto; }
+  #igInput { cursor: text; }
+  .ig-gift { color: #ffd54a; font-size: 24px; font-weight: 800; }
+  .ig-sub  { color: #c9b8d6; font-size: 17px; font-weight: 600; max-width: 460px; text-align:center; line-height:1.5; }
+  .ig-dm { color: #fff; font-size: 18px; font-weight: 600; }
+  .ig-dm b { color: #7fd1ff; }
+  .ig-title { color: #fff; font-size: 22px; font-weight: 700; margin-top: 6px; }
+  .ig-title b { color: #ff7ab0; }
+  #igStart {
+    padding: 16px 44px; font-size: 22px; font-weight: 800; color: #2a0f2f;
+    background: linear-gradient(135deg,#ff7a59,#ff3b8d,#9b59ff); border: none; border-radius: 999px;
+    cursor: pointer; box-shadow: 0 10px 36px rgba(255,59,141,.45); letter-spacing: .5px;
+  }
+  #igStart:active { transform: scale(.96); }
+  #hint { position: fixed; left: 0; right: 0; bottom: 34px; text-align: center; z-index: 40;
+          font-family: -apple-system,"Pretendard","Apple SD Gothic Neo",sans-serif;
+          color: rgba(255,255,255,.55); font-size: 16px; letter-spacing: .3px;
+          pointer-events: none; transition: opacity .5s; }
+  .badge { display:inline-block; padding: 3px 10px; border-radius: 999px; background: rgba(255,255,255,.08); margin: 0 3px; }
+  #err { position: fixed; left: 50%; top: 24px; transform: translateX(-50%); z-index: 60;
+         font-family: -apple-system, sans-serif; color: #ffb3b3; font-size: 14px;
+         background: rgba(80,0,0,.6); padding: 8px 16px; border-radius: 10px; display: none; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <video id="cam" autoplay playsinline muted></video>
+  <video id="spin" loop muted playsinline preload="auto" src="assets/serum_spin.mp4"></video>
+  <canvas id="cv"></canvas>
+</div>
+
+<div id="hint">손바닥을 펴서 <span class="badge">🍎 사과</span><span class="badge">🍷 비트</span><span class="badge">🥕 당근</span> 를 믹서기로 쓸어 담으세요</div>
+<div id="err"></div>
+
+<div id="overlay">
+  <h1>🥤 ABC SMOOTHIE</h1>
+  <p>떨어지는 사과·비트·당근을 <b>손바닥으로 쓸어</b> 믹서기에 담는 <b>⏱ 타임어택!</b></p>
+  <button id="startBtn">시작 (카메라 허용)</button>
+  <p style="font-size:13px;color:#7d6a8a">맥북 웹캠/카메라 권한을 허용해 주세요</p>
+</div>
+
+<!-- 대기 화면(과일 떨어지는 위)에서 아이디 입력 -->
+<div id="igPanel">
+  <div class="ig-gift">🎁 타임어택 1·2·3등에게 선물을 드려요!</div>
+  <div class="ig-dm">📩 최종 결과는 <b>DM</b>으로 알려드려요!</div>
+  <div class="ig-title">⏱ 인스타 아이디를 입력하고 <b>Enter ⏎</b> 로 시작!</div>
+  <input id="igInput" type="text" placeholder="@instagram_id" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="30" />
+</div>
+
+<!-- MediaPipe Tasks Vision (손 추적) -->
+<script type="module">
+import { FilesetResolver, HandLandmarker, FaceLandmarker }
+  from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+/* =========================================================================
+   조절 가능한 설정값
+   ========================================================================= */
+const CFG = {
+  FILL_TARGET:     7,     // 믹서기를 채우는 데 필요한 재료 수 (큰 스티커 기준)
+  SPAWN_INTERVAL:  360,   // 재료가 떨어지는 간격(ms) — 작을수록 비가 거셈
+  MAX_PARTICLES:   22,    // 동시에 떨어지는 최대 재료 수
+  HAND_RADIUS:     220,   // 손바닥 영향 반경(px)
+  HAND_PUSH:       2.6,   // 손바닥이 재료를 미는/유도하는 세기
+  GRAVITY:         0.13,  // 중력
+  BLEND_MS:        3000,  // 스무디 가는 시간
+  POUR_MS:         3200,  // 세럼병에 담는 시간
+  ROTATE_MS:       3000,  // 세럼 360 한 바퀴(1.7배속) 후 바로 전환
+  DISSOLVE_MS:     500,   // 제품 → 얼굴 디졸브 (짧게)
+  FACE_MS:         16000, // 얼굴 + 스포이드 인터랙션 최대 시간
+  FADE_MS:         1500,  // 페이드아웃 시간
+};
+
+const COLORS = {
+  apple:  "#e23b48",
+  beet:   "#9c1f5e",
+  carrot: "#f4862b",
+  juice:  "#7a2b6b", // ABC 혼합색 (자주빛)
+  juiceLight: "#a83c8f",
+};
+const TYPES = ["apple", "beet", "carrot"];
+
+/* =========================================================================
+   이미지 에셋 — assets/ 폴더에 PNG(배경 투명)를 넣으면 자동 사용.
+   없으면 아래 벡터 그림으로 자동 fallback.
+     assets/apple.png  assets/beet.png  assets/carrot.png
+     assets/blender.png  assets/serum.png
+   ========================================================================= */
+const ASSETS = {};
+const ASSET_FILES = {
+  apple:  "assets/apple.png",
+  beet:   "assets/beet.png",
+  carrot: "assets/carrot.png",
+  blender:"assets/blender.png",
+  serum:        "assets/serum_front.png",   // 라벨이 보이는 정면
+  serumBehind:  "assets/serum_behind.png",  // 돌아섰을 때 뒷면
+};
+function loadAssets(){
+  for (const [key, src] of Object.entries(ASSET_FILES)){
+    const img = new Image();
+    img.onload = () => { ASSETS[key] = img; };
+    img.onerror = () => { /* 파일 없으면 벡터로 대체 */ };
+    img.src = src + "?v=" + Date.now();
+  }
+}
+loadAssets();
+// 회전/스케일을 적용해 이미지를 중앙 기준으로 그림. h(높이)는 비율 자동.
+function drawImageCentered(img, w){
+  const ratio = img.naturalHeight / img.naturalWidth;
+  const h = w * ratio;
+  ctx.drawImage(img, -w/2, -h/2, w, h);
+}
+
+/* =========================================================================
+   캔버스 셋업
+   ========================================================================= */
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+let W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
+function resize() {
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+const video = document.getElementById("cam");
+const spinVideo = document.getElementById("spin");
+let spinReady = false;
+spinVideo.addEventListener("loadeddata", () => { spinReady = true; });
+spinVideo.addEventListener("error", () => { spinReady = false; });
+// 크로마키용 오프스크린 캔버스
+const keyCanvas = document.createElement("canvas");
+const keyCtx = keyCanvas.getContext("2d", { willReadFrequently: true });
+
+/* =========================================================================
+   사운드 (Web Audio로 합성 — 외부 파일 불필요, 오프라인 동작)
+   ========================================================================= */
+let audioCtx = null;
+function initAudio(){
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+  } catch(e){ audioCtx = null; }
+}
+function tone({freq=440, to=null, dur=0.2, type="sine", gain=0.2, attack=0.005, delay=0}){
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime + delay;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (to) o.frequency.exponentialRampToValueAtTime(Math.max(1,to), t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gain, t + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(audioCtx.destination);
+  o.start(t); o.stop(t + dur + 0.03);
+}
+function noiseBurst({dur=0.3, gain=0.15, freq=1000, slideTo=null, type="bandpass", q=0.8, delay=0}){
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime + delay;
+  const buf = audioCtx.createBuffer(1, Math.ceil(audioCtx.sampleRate*dur), audioCtx.sampleRate);
+  const d = buf.getChannelData(0); for (let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
+  const n = audioCtx.createBufferSource(); n.buffer = buf;
+  const f = audioCtx.createBiquadFilter(); f.type = type; f.Q.value = q;
+  f.frequency.setValueAtTime(freq, t); if (slideTo) f.frequency.exponentialRampToValueAtTime(slideTo, t+dur);
+  const g = audioCtx.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+  n.connect(f).connect(g).connect(audioCtx.destination); n.start(t); n.stop(t+dur);
+}
+// 액션별 효과음
+function sfxPop(){ tone({freq:540, to:880, dur:0.11, type:"triangle", gain:0.16}); }                 // 재료 톡
+function sfxBlend(){ tone({freq:130, to:95, dur:CFG.BLEND_MS/1000, type:"sawtooth", gain:0.07});
+                     noiseBurst({dur:CFG.BLEND_MS/1000, gain:0.04, freq:900, q:0.6}); }              // 믹서기 윙
+function sfxPour(){ noiseBurst({dur:0.9, gain:0.11, freq:500, slideTo:1400, type:"lowpass", q:0.5}); } // 따르기
+function sfxChime(){ [660,990,1320].forEach((f,i)=>tone({freq:f, dur:0.55, type:"sine", gain:0.11, delay:i*0.09})); } // 완성 반짝
+function sfxDrip(){ tone({freq:1500, to:560, dur:0.13, type:"sine", gain:0.16}); }                   // 방울 똑
+function sfxTransform(){ tone({freq:300, to:1300, dur:0.5, type:"square", gain:0.1});
+                        [523,659,784,1047].forEach((f,i)=>tone({freq:f, dur:0.45, type:"triangle", gain:0.11, delay:0.18+i*0.07})); } // 변신
+function sfxWhoosh(){ noiseBurst({dur:0.6, gain:0.14, freq:300, slideTo:2200, type:"bandpass", q:0.5}); } // 쏟아짐
+function sfxThud(){ tone({freq:170, to:70, dur:0.12, type:"sine", gain:0.1}); }                      // 쌓임 쿵
+function sfxDing(){ [880,1320,1760].forEach((f,i)=>tone({freq:f, dur:0.8, type:"sine", gain:0.12, delay:i*0.1})); } // 커밍순 딩
+function sfxBeep(){ tone({freq:680, dur:0.13, type:"square", gain:0.15}); }                          // 3·2·1
+function sfxStartGo(){ [660,990,1320].forEach((f,i)=>tone({freq:f, dur:0.45, type:"triangle", gain:0.16, delay:i*0.05})); } // START!
+const overlay = document.getElementById("overlay");
+const hintEl = document.getElementById("hint");
+const errEl = document.getElementById("err");
+function showErr(msg){ errEl.textContent = msg; errEl.style.display = "block"; }
+
+/* =========================================================================
+   상태 머신
+   ========================================================================= */
+const STATE = { IDLE:"IDLE", STARTING:"STARTING", RAIN:"RAIN", BLENDING:"BLENDING", POURING:"POURING", ROTATING:"ROTATING", DISSOLVE:"DISSOLVE", FACE:"FACE", FRUITFACE:"FRUITFACE", POSTER:"POSTER", FADE:"FADE" };
+let state = STATE.IDLE;
+let stateStart = 0;
+let fill = 0;            // 현재 채워진 재료 수
+let blenderShake = 0;
+
+function setState(s){ state = s; stateStart = performance.now(); }
+
+/* =========================================================================
+   재료 파티클
+   ========================================================================= */
+let particles = [];
+let lastSpawn = 0;
+
+function spawnParticle(){
+  if (particles.length >= CFG.MAX_PARTICLES) return;
+  const type = TYPES[(Math.random()*TYPES.length)|0];
+  // 믹서기 입구 위가 아니라 '양옆'에서 떨어지게 → 손바닥으로 쳐서 넣기
+  const it = blenderInterior();
+  const bandL = it.cx - it.innerW*1.5, bandR = it.cx + it.innerW*1.5;
+  const leftW = Math.max(20, bandL - 40), rightW = Math.max(20, (W-40) - bandR);
+  let x;
+  if (leftW + rightW < 60){                       // 화면이 좁으면 전체에서
+    x = 40 + Math.random()*(W-80);
+  } else if (Math.random() < leftW/(leftW+rightW)){
+    x = 40 + Math.random()*leftW;                 // 왼쪽 구역
+  } else {
+    x = bandR + Math.random()*rightW;             // 오른쪽 구역
+  }
+  particles.push({
+    x,
+    y: -30,
+    vx: (Math.random()-0.5)*0.3,        // 거의 수직 낙하 → 손으로 쳐 넣어야 함
+    vy: 0.5 + Math.random()*1.2,
+    rot: Math.random()*Math.PI*2,
+    vr: (Math.random()-0.5)*0.04,
+    // 유리병에 그대로 들어가도록 내부 폭 기준으로 크기 산정 (더 큼직하게)
+    size: blenderInterior().innerW * (0.60 + Math.random()*0.16),
+    type,
+    caught: false,
+  });
+}
+
+// 믹서기 위치/크기 (하단 중앙)
+function blender(){
+  const bw = Math.min(760, W*0.64, H*0.66);   // 더 크게
+  const bh = bw * 1.05;
+  return { x: W/2, topY: H - bh + 30, w: bw, h: bh, mouthW: bw*0.6 };
+}
+// 믹서기 이미지 기준 내부(유리병 안) 영역 — 재료가 쌓이고 주스가 차는 곳
+function blenderInterior(){
+  const b = blender();
+  const img = ASSETS.blender;
+  const iw = b.w * 1.3;
+  const ih = img ? iw * (img.naturalHeight / img.naturalWidth) : b.h;
+  const cx = b.x, cy = b.topY + b.h*0.5;
+  return {
+    cx, cy, iw, ih,
+    // blender.png 실측 기준 유리병 안쪽 영역
+    innerW:   iw * 0.27,
+    innerTop: cy - ih * 0.30,   // 유리병 입구(테두리 안쪽)
+    innerBot: cy - ih * 0.03,   // 유리병 몸통 바닥
+  };
+}
+
+// 유리병 안쪽 클리핑 경로 (둥근 사각형) — pad만큼 여유
+function jarClip(it, pad = 0){
+  const x0 = it.cx - it.innerW/2 - pad, x1 = it.cx + it.innerW/2 + pad;
+  const yT = it.innerTop - pad, yB = it.innerBot + pad, r = 14;
+  ctx.beginPath();
+  ctx.moveTo(x0+r, yT); ctx.lineTo(x1-r, yT); ctx.arcTo(x1,yT,x1,yT+r,r);
+  ctx.lineTo(x1, yB-r); ctx.arcTo(x1,yB,x1-r,yB,r);
+  ctx.lineTo(x0+r, yB); ctx.arcTo(x0,yB,x0,yB-r,r);
+  ctx.lineTo(x0, yT+r); ctx.arcTo(x0,yT,x0+r,yT,r);
+  ctx.closePath();
+}
+
+// 유리 질감 오버레이 — 내용물 위에 덧씌워 "병 속에 담긴" 느낌
+function glassOverlay(it){
+  const x0 = it.cx - it.innerW/2, w = it.innerW, yT = it.innerTop, h = it.innerBot - it.innerTop;
+  ctx.fillStyle = "rgba(190,205,220,.10)"; ctx.fillRect(x0, yT, w, h);          // 유리 틴트
+  const sh = ctx.createLinearGradient(0, yT, 0, yT + h*0.28);                    // 입구 안쪽 그림자
+  sh.addColorStop(0, "rgba(0,0,0,.30)"); sh.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = sh; ctx.fillRect(x0, yT, w, h*0.28);
+  ctx.fillStyle = "rgba(255,255,255,.16)"; ctx.fillRect(x0 + w*0.12, yT, w*0.07, h); // 좌측 광택
+  ctx.fillStyle = "rgba(255,255,255,.07)"; ctx.fillRect(x0 + w*0.74, yT, w*0.05, h); // 우측 광택
+}
+
+/* =========================================================================
+   손 추적
+   ========================================================================= */
+let handLandmarker = null;
+let faceLandmarker = null;
+let hands = [];        // [{px,py, points:[{x,y}...]}]
+let facePoly = null;   // (대표) 얼굴 외곽선 — FACE 단계/뷰티필터용
+let faceLms = null;    // (대표) 얼굴 랜드마크 — 첫번째 얼굴
+let faces = [];        // 인식된 모든 얼굴 [{lms, poly, fruit}]
+let tracks = [];       // 얼굴 트래킹 [{cx, cy, fruit, seen}] — 과일 고정용
+let faceSeenAt = 0;    // 마지막으로 얼굴 본 시각
+let lastVideoTime = -1;
+// 눈/코/입 랜드마크 인덱스
+const LEFT_EYE  = [33,133,159,145,160,144,158,153];
+const RIGHT_EYE = [362,263,386,374,387,373,385,380];
+const NOSE      = [1,2,98,327,168,6,197];
+const MOUTH     = [61,291,13,14,0,17,78,308,87,317];
+
+// MediaPipe FaceMesh '얼굴 외곽선(FACE_OVAL)' 정점 순서
+const FACE_OVAL = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,
+  378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
+
+async function initHands(){
+  const resolver = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+  );
+  handLandmarker = await HandLandmarker.createFromOptions(resolver, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+      delegate: "GPU",
+    },
+    runningMode: "VIDEO",
+    numHands: 2,
+  });
+  try {
+    faceLandmarker = await FaceLandmarker.createFromOptions(resolver, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        delegate: "GPU",
+      },
+      runningMode: "VIDEO",
+      numFaces: 6,
+      minFaceDetectionConfidence: 0.3,   // 모자/측면 등도 잘 잡히게 낮춤
+      minFacePresenceConfidence: 0.3,
+      minTrackingConfidence: 0.3,
+    });
+  } catch(e){ faceLandmarker = null; }   // 실패 시 중앙영역으로 fallback
+}
+
+/* 얼굴 외곽선 검출 → 화면 좌표 다각형 (stretch-mirror: 정규좌표 nx → (1-nx)*W) */
+function polyFromLms(lms){
+  const pts = FACE_OVAL.map(i => ({ x: (1-lms[i].x)*W, y: lms[i].y*H }));
+  let cx=0, cy=0; for (const p of pts){ cx+=p.x; cy+=p.y; } cx/=pts.length; cy/=pts.length;
+  return pts.map(p => ({ x: cx + (p.x-cx)*1.07, y: cy + (p.y-cy)*1.10 }));
+}
+function detectFace(now){
+  if (!faceLandmarker || video.readyState < 2 || !video.videoWidth) return;
+  let res;
+  try { res = faceLandmarker.detectForVideo(video, now); } catch(e){ return; }
+  const all = (res && res.faceLandmarks) || [];
+  const used = new Set();
+  for (const lms of all){
+    const poly = polyFromLms(lms);
+    const b = boundsOfPoly(poly);
+    // 가장 가까운 기존 트랙에 매칭 → 같은 얼굴이면 과일/정체성 유지
+    let best=-1, bestD=1e9;
+    for (let i=0;i<tracks.length;i++){
+      if (used.has(i)) continue;
+      const d = Math.hypot(tracks[i].cx-b.cx, tracks[i].cy-b.cy);
+      if (d < bestD){ bestD=d; best=i; }
+    }
+    const thresh = Math.max(b.w, b.h, 140) * 1.4;
+    if (best>=0 && bestD < thresh){                 // 기존 얼굴 업데이트
+      const tr = tracks[best]; used.add(best);
+      tr.cx=b.cx; tr.cy=b.cy; tr.w=b.w; tr.h=b.h; tr.lms=lms; tr.poly=poly; tr.seen=now;
+    } else {                                        // 새 얼굴 → 랜덤 1회 배정 후 고정
+      tracks.push({ cx:b.cx, cy:b.cy, w:b.w, h:b.h, lms, poly, seen:now,
+                    fruit: TYPES[(Math.random()*TYPES.length)|0] });
+      used.add(tracks.length-1);
+    }
+  }
+  if (all.length) faceSeenAt = now;
+  tracks = tracks.filter(tr => now - tr.seen < 1500);          // 오래 안 보이면 제거
+  // 잠깐(≤400ms) 놓쳐도 마지막 위치로 계속 그림 → 깜빡임 방지
+  faces = tracks.filter(tr => now - tr.seen < 400);
+  if (faces.length){
+    let big = faces[0];                                        // 대표(가장 큰) 얼굴 → FACE 단계용
+    for (const f of faces) if (Math.max(f.w,f.h) > Math.max(big.w,big.h)) big = f;
+    faceLms = big.lms; facePoly = big.poly;
+  } else if (now - faceSeenAt > 600){
+    facePoly = null; faceLms = null;
+  }
+}
+// 정규 랜드마크 인덱스들의 화면좌표 바운딩 (stretch-mirror)
+function lmBox(idxs, lms = faceLms){
+  let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
+  for (const i of idxs){
+    const x=(1-lms[i].x)*W, y=lms[i].y*H;
+    if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
+  }
+  return { cx:(minx+maxx)/2, cy:(miny+maxy)/2, rx:(maxx-minx)/2, ry:(maxy-miny)/2 };
+}
+// 얼굴 외곽선 경로를 ctx에 그림(부드러운 곡선)
+function traceFacePath(c, poly){
+  c.beginPath();
+  const n = poly.length;
+  const mid = (a,b)=>({ x:(a.x+b.x)/2, y:(a.y+b.y)/2 });
+  let m0 = mid(poly[n-1], poly[0]);
+  c.moveTo(m0.x, m0.y);
+  for (let i=0;i<n;i++){
+    const cur = poly[i], nx = poly[(i+1)%n];
+    const m = mid(cur, nx);
+    c.quadraticCurveTo(cur.x, cur.y, m.x, m.y);   // 정점을 컨트롤점으로 → 매끈한 윤곽
+  }
+  c.closePath();
+}
+// 점이 다각형 안인가 (ray casting)
+function inFacePoly(x, y){
+  if (!facePoly) return false;
+  let inside = false;
+  for (let i=0, j=facePoly.length-1; i<facePoly.length; j=i++){
+    const xi=facePoly[i].x, yi=facePoly[i].y, xj=facePoly[j].x, yj=facePoly[j].y;
+    if (((yi>y)!==(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi)) inside = !inside;
+  }
+  return inside;
+}
+
+function detectHands(now){
+  if (!handLandmarker || video.readyState < 2) return;
+  if (video.currentTime === lastVideoTime) return;
+  lastVideoTime = video.currentTime;
+  let res;
+  try { res = handLandmarker.detectForVideo(video, now); }
+  catch(e){ return; }
+  hands = [];
+  if (res && res.landmarks){
+    for (const lm of res.landmarks){
+      // 좌우 반전(거울) — 화면 좌표로 변환
+      const pts = lm.map(p => ({ x: (1 - p.x) * W, y: p.y * H }));
+      // 손바닥 중심 = 0,5,9,13,17 평균
+      const idx = [0,5,9,13,17];
+      let cx=0, cy=0;
+      idx.forEach(i => { cx += pts[i].x; cy += pts[i].y; });
+      hands.push({ px: cx/idx.length, py: cy/idx.length, points: pts });
+    }
+  }
+}
+
+/* =========================================================================
+   그리기 — 재료
+   ========================================================================= */
+function drawIngredient(p){
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(p.rot);
+  // 실사 스티커 이미지가 있으면 그것을 사용
+  if (ASSETS[p.type]){
+    ctx.shadowColor = "rgba(0,0,0,.35)"; ctx.shadowBlur = 10; ctx.shadowOffsetY = 4;
+    drawImageCentered(ASSETS[p.type], p.size);
+    ctx.restore();
+    return;
+  }
+  const s = p.size;
+  if (p.type === "apple"){
+    ctx.fillStyle = COLORS.apple;
+    ctx.beginPath(); ctx.ellipse(0, 2, s*0.5, s*0.46, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#b32530";
+    ctx.beginPath(); ctx.ellipse(-s*0.18, 2, s*0.18, s*0.4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#6b3a1f"; ctx.lineWidth = 2.4; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(0,-s*0.42); ctx.lineTo(s*0.05,-s*0.62); ctx.stroke();
+    ctx.fillStyle = "#4caf50";
+    ctx.beginPath(); ctx.ellipse(s*0.16,-s*0.55, s*0.16, s*0.09, -0.6, 0, Math.PI*2); ctx.fill();
+  } else if (p.type === "beet"){
+    ctx.fillStyle = COLORS.beet;
+    ctx.beginPath();
+    ctx.moveTo(0, s*0.55);
+    ctx.bezierCurveTo(-s*0.55,s*0.3, -s*0.5,-s*0.35, 0,-s*0.3);
+    ctx.bezierCurveTo(s*0.5,-s*0.35, s*0.55,s*0.3, 0,s*0.55);
+    ctx.fill();
+    ctx.strokeStyle="#5e1340"; ctx.lineWidth=2; ctx.lineCap="round";
+    [-0.18,0,0.18].forEach(o=>{ ctx.beginPath(); ctx.moveTo(o*s,-s*0.28); ctx.lineTo(o*s*1.4,-s*0.6); ctx.stroke(); });
+    ctx.fillStyle="#3fae54";
+    [-0.2,0.05,0.28].forEach(o=>{ ctx.beginPath(); ctx.ellipse(o*s*1.5,-s*0.62, s*0.12,s*0.2, o, 0,Math.PI*2); ctx.fill(); });
+  } else { // carrot
+    ctx.fillStyle = COLORS.carrot;
+    ctx.beginPath();
+    ctx.moveTo(0, s*0.6); ctx.lineTo(-s*0.26,-s*0.3); ctx.lineTo(s*0.26,-s*0.3);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle="rgba(180,90,20,.5)"; ctx.lineWidth=1.6;
+    for(let i=1;i<4;i++){ const yy=-s*0.3 + i*s*0.22; const ww=s*0.24*(1-i/4.2);
+      ctx.beginPath(); ctx.moveTo(-ww, yy); ctx.lineTo(ww, yy); ctx.stroke(); }
+    ctx.fillStyle="#3fae54";
+    [-0.16,0,0.16].forEach(o=>{ ctx.beginPath(); ctx.moveTo(o*s,-s*0.3);
+      ctx.lineTo(o*s*1.3,-s*0.7); ctx.lineTo(o*s+ s*0.06,-s*0.3); ctx.closePath(); ctx.fill(); });
+  }
+  ctx.restore();
+}
+
+/* =========================================================================
+   그리기 — 믹서기
+   ========================================================================= */
+function drawBlender(opts={}){
+  const b = blender();
+  const shake = opts.shake ? (Math.random()-0.5)*opts.shake : 0;
+  ctx.save();
+  ctx.translate(shake, 0);
+
+  // 실사 믹서기 이미지 사용. 재료는 별도(drawPile)로 병 안에 쌓이고,
+  // 주스(juice)는 갈기/따르기 단계에서만 채운다.
+  if (ASSETS.blender){
+    const img = ASSETS.blender;
+    const it = blenderInterior();
+    // 믹서기 본체 먼저
+    ctx.drawImage(img, it.cx - it.iw/2, it.cy - it.ih/2, it.iw, it.ih);
+    // 주스 채우기 (BLENDING/POURING) — 유리병 안쪽에 위로 덧칠
+    if (opts.juice && opts.liquidRatio > 0.001){
+      const r = opts.liquidRatio;
+      const lvY = it.innerBot - (it.innerBot - it.innerTop) * r;
+      ctx.save();
+      jarClip(it); ctx.clip();
+      const g = ctx.createLinearGradient(0, lvY, 0, it.innerBot);
+      g.addColorStop(0, opts.liquidColor || COLORS.juiceLight);
+      g.addColorStop(1, opts.liquidColor2 || COLORS.juice);
+      ctx.fillStyle = g;
+      ctx.fillRect(it.cx-it.innerW/2, lvY, it.innerW, it.innerBot-lvY);
+      ctx.fillStyle = "rgba(255,255,255,.3)"; ctx.fillRect(it.cx-it.innerW/2, lvY-2, it.innerW, 3);
+      glassOverlay(it);
+      ctx.restore();
+    }
+    ctx.restore();
+    return b;
+  }
+
+  const left = b.x - b.w/2, right = b.x + b.w/2;
+  const topY = b.topY, botY = b.topY + b.h*0.78;
+
+  // 유리 jar (사다리꼴)
+  const jarTopL = b.x - b.mouthW/2, jarTopR = b.x + b.mouthW/2;
+  ctx.beginPath();
+  ctx.moveTo(jarTopL, topY);
+  ctx.lineTo(jarTopR, topY);
+  ctx.lineTo(right, botY);
+  ctx.lineTo(left, botY);
+  ctx.closePath();
+  ctx.fillStyle = "rgba(180,200,220,.10)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(200,220,240,.55)"; ctx.lineWidth = 3; ctx.stroke();
+
+  // 내부 액체 (채워진 정도)
+  const ratio = opts.liquidRatio !== undefined ? opts.liquidRatio
+              : Math.min(1, fill / CFG.FILL_TARGET);
+  if (ratio > 0.001){
+    const lvY = botY - (botY - topY) * ratio;
+    const f = (y)=> { const t=(y-topY)/(botY-topY);
+      return [jarTopL+(left-jarTopL)*t, jarTopR+(right-jarTopR)*t]; };
+    const [lx, rx] = f(lvY);
+    ctx.beginPath();
+    ctx.moveTo(lx, lvY); ctx.lineTo(rx, lvY);
+    ctx.lineTo(right, botY); ctx.lineTo(left, botY); ctx.closePath();
+    const grad = ctx.createLinearGradient(0, lvY, 0, botY);
+    grad.addColorStop(0, opts.liquidColor || COLORS.juiceLight);
+    grad.addColorStop(1, opts.liquidColor2 || COLORS.juice);
+    ctx.fillStyle = grad; ctx.fill();
+    // 표면 하이라이트
+    ctx.beginPath(); ctx.moveTo(lx,lvY); ctx.lineTo(rx,lvY);
+    ctx.strokeStyle="rgba(255,255,255,.35)"; ctx.lineWidth=2; ctx.stroke();
+  }
+
+  // 뚜껑
+  ctx.fillStyle = "rgba(220,230,240,.85)";
+  roundRect(jarTopL-8, topY-16, b.mouthW+16, 16, 6); ctx.fill();
+
+  // 베이스(모터)
+  const baseY = botY;
+  ctx.fillStyle = "#1b1b22";
+  roundRect(left-10, baseY, b.w+20, b.h*0.22, 10); ctx.fill();
+  ctx.fillStyle = "#2a2a35";
+  roundRect(left+8, baseY+ b.h*0.10, b.w-16, b.h*0.07, 5); ctx.fill();
+
+  // 블레이드(가는 동안 회전)
+  if (opts.blade){
+    ctx.save();
+    ctx.translate(b.x, botY-14);
+    ctx.rotate(opts.bladeAngle||0);
+    ctx.fillStyle = "rgba(220,225,235,.9)";
+    for(let i=0;i<4;i++){ ctx.rotate(Math.PI/2);
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(b.w*0.18,-5); ctx.lineTo(b.w*0.18,5); ctx.closePath(); ctx.fill(); }
+    ctx.restore();
+  }
+  ctx.restore();
+  return b;
+}
+
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+
+/* 믹서기 유리병 안에 담기는 재료 스티커 (아래부터 채워짐 + 유리 질감) */
+function drawPile(){
+  if (!caughtItems.length) return;
+  const it = blenderInterior();
+  ctx.save();
+  jarClip(it, 12); ctx.clip();      // 유리병 안쪽(+여유)으로만 보이게
+  for (const c of caughtItems){
+    ctx.save();
+    ctx.translate(c.x, c.y); ctx.rotate(c.rot);
+    ctx.shadowColor = "rgba(0,0,0,.35)"; ctx.shadowBlur = 7; ctx.shadowOffsetY = 3;
+    if (ASSETS[c.type]) drawImageCentered(ASSETS[c.type], c.size);  // 떨어질 때와 동일 크기
+    else { ctx.fillStyle = COLORS[c.type]; ctx.beginPath(); ctx.arc(0,0,c.r,0,Math.PI*2); ctx.fill(); }
+    ctx.restore();
+  }
+  glassOverlay(it);                 // 내용물 위에 유리 반사/그림자
+  ctx.restore();
+}
+
+/* 회전판(턴테이블) — 세럼이 그 위에 서서 도는 쇼케이스 */
+function drawTurntable(cx, cy, angle, scale=1){
+  ctx.save();
+  ctx.translate(cx, cy);
+  const rx = 150*scale, ry = 34*scale;
+  // 바닥 그림자
+  ctx.fillStyle = "rgba(0,0,0,.4)";
+  ctx.beginPath(); ctx.ellipse(0, ry*0.35, rx*0.92, ry*0.8, 0, 0, Math.PI*2); ctx.fill();
+  // 회전판 본체
+  const grd = ctx.createLinearGradient(-rx, 0, rx, 0);
+  grd.addColorStop(0,"#241a2e"); grd.addColorStop(.5,"#5a4668"); grd.addColorStop(1,"#241a2e");
+  ctx.fillStyle = grd;
+  ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.25)"; ctx.lineWidth = 2; ctx.stroke();
+  // 회전 표시(빛 반사 점들이 함께 돈다)
+  for (let i = 0; i < 10; i++){
+    const a = angle + i*Math.PI/5;
+    const x = Math.cos(a)*rx*0.82, y = Math.sin(a)*ry*0.82;
+    const front = Math.max(0, Math.sin(a));
+    ctx.fillStyle = `rgba(255,200,235,${0.2 + 0.5*front})`;
+    ctx.beginPath(); ctx.ellipse(x, y, 5*scale, 3*scale, 0, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* =========================================================================
+   그리기 — 세럼병
+   ========================================================================= */
+// spinX: 세로축 회전(턴테이블) 가로 스케일 cos값(1=정면,-1=뒷면). spinAngle: 음영용 각도.
+function drawSerum(cx, cy, scale, fillRatio, spinX, spinAngle){
+  if (spinX === undefined) spinX = 1;
+  let sx = scale * spinX;
+  // 완전히 얇아져 사라지지 않게 최소 두께 유지
+  if (Math.abs(sx) < scale*0.10) sx = (spinX < 0 ? -1 : 1) * scale*0.10;
+
+  // 바닥 접지 그림자(회전과 무관하게 고정) — 먼저 그림
+  if (ASSETS.serum){
+    const w0 = 150, h0 = w0*(ASSETS.serum.naturalHeight/ASSETS.serum.naturalWidth);
+    ctx.save();
+    ctx.translate(cx, cy + h0*scale*0.46);
+    ctx.fillStyle = "rgba(0,0,0,.28)";
+    ctx.beginPath(); ctx.ellipse(0, 0, w0*scale*0.42, h0*scale*0.035, 0, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(sx, scale);
+
+  // 세럼 이미지 사용: 정면(cos>0)=라벨 앞면, 뒤를 보이면(cos<0)=뒷면
+  const front = ASSETS.serum, back = ASSETS.serumBehind || ASSETS.serum;
+  const img = (spinX >= 0) ? front : back;
+  if (img){
+    const w = 150, h = w*(img.naturalHeight/img.naturalWidth);
+    drawImageCentered(img, w);
+    // 원통 음영 — 회전감을 위해 양 끝 어둡게 + 이동 하이라이트 (이미지 안쪽에만)
+    if (spinAngle !== undefined){
+      ctx.globalCompositeOperation = "source-atop";
+      // 가장자리 음영(고정)
+      const edge = ctx.createLinearGradient(-w/2,0, w/2,0);
+      edge.addColorStop(0.0, "rgba(0,0,0,.34)");
+      edge.addColorStop(0.5, "rgba(0,0,0,0)");
+      edge.addColorStop(1.0, "rgba(0,0,0,.34)");
+      ctx.fillStyle = edge; ctx.fillRect(-w/2,-h/2,w,h);
+      // 이동 하이라이트(회전에 따라 표면을 가로지름)
+      const hx = Math.sin(spinAngle) * w*0.32;
+      const hl = ctx.createRadialGradient(hx,0,0, hx,0, w*0.55);
+      hl.addColorStop(0, "rgba(255,255,255,.30)");
+      hl.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = hl; ctx.fillRect(-w/2,-h/2,w,h);
+      ctx.globalCompositeOperation = "source-over";
+    }
+    ctx.restore();
+    return;
+  }
+
+  const bw = 70, bh = 150;
+  // 스포이드 캡
+  ctx.fillStyle = "#241019";
+  roundRect(-22, -bh/2-46, 44, 30, 8); ctx.fill();
+  ctx.fillStyle = "#3a1a2a";
+  roundRect(-10, -bh/2-20, 20, 24, 4); ctx.fill();
+
+  // 병 몸체
+  ctx.beginPath();
+  roundRect(-bw/2, -bh/2, bw, bh, 16);
+  ctx.fillStyle = "rgba(255,255,255,.10)";
+  ctx.fill();
+
+  // 내용물 (juice)
+  ctx.save();
+  ctx.beginPath(); roundRect(-bw/2, -bh/2, bw, bh, 16); ctx.clip();
+  const lv = (bh/2) - bh*fillRatio;
+  const g = ctx.createLinearGradient(0, lv, 0, bh/2);
+  g.addColorStop(0, COLORS.juiceLight); g.addColorStop(1, COLORS.juice);
+  ctx.fillStyle = g;
+  ctx.fillRect(-bw/2, lv, bw, bh);
+  // 표면
+  ctx.fillStyle = "rgba(255,255,255,.3)";
+  ctx.fillRect(-bw/2, lv-2, bw, 3);
+  ctx.restore();
+
+  // 병 외곽선 + 하이라이트
+  ctx.beginPath(); roundRect(-bw/2, -bh/2, bw, bh, 16);
+  ctx.strokeStyle = "rgba(255,255,255,.5)"; ctx.lineWidth = 2.5; ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,.18)";
+  roundRect(-bw/2+8, -bh/2+12, 10, bh-30, 5); ctx.fill();
+
+  // 라벨
+  ctx.fillStyle = "rgba(255,255,255,.92)";
+  roundRect(-bw/2+10, -8, bw-20, 40, 6); ctx.fill();
+  ctx.fillStyle = COLORS.juice;
+  ctx.font = "700 15px -apple-system, sans-serif"; ctx.textAlign="center";
+  ctx.fillText("ABC", 0, 6);
+  ctx.font = "600 8px -apple-system, sans-serif";
+  ctx.fillText("SMOOTHIE SERUM", 0, 20);
+
+  ctx.restore();
+}
+
+/* =========================================================================
+   손 시각화 (검은 화면에 인식 피드백)
+   ========================================================================= */
+const HAND_CONNS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],
+  [9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+/* 웹캠 배경 — 거울 반전 + 흑백↔컬러 크로스페이드 (gray:1=흑백,0=컬러) */
+function drawCameraBG(dim = 0.3, gray = 1){
+  if (video.readyState < 2 || !video.videoWidth) return;
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const scale = Math.max(W/vw, H/vh);   // 화면 꽉 채우기(cover)
+  // 컬러 베이스
+  ctx.save();
+  ctx.filter = "brightness(0.92) saturate(1.1)";
+  ctx.translate(W/2, H/2); ctx.scale(-scale, scale);
+  ctx.drawImage(video, -vw/2, -vh/2);
+  ctx.restore();
+  // 흑백 레이어(점점 사라지며 컬러 노출)
+  if (gray > 0.01){
+    ctx.save();
+    ctx.globalAlpha = gray;
+    ctx.filter = "grayscale(1) contrast(1.05) brightness(0.85)";
+    ctx.translate(W/2, H/2); ctx.scale(-scale, scale);
+    ctx.drawImage(video, -vw/2, -vh/2);
+    ctx.restore();
+  }
+  // 약간 어둡게 깔아 제품 강조
+  ctx.fillStyle = `rgba(0,0,0,${dim})`;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawHands(){
+  ctx.save();
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const h of hands){
+    // 손 크기 추정(손목~중지뿌리) → 이모지 크기
+    const wr = h.points[0], mid = h.points[9];
+    const palm = Math.hypot(wr.x-mid.x, wr.y-mid.y);
+    const size = Math.max(120, Math.min(300, palm*3.4));
+    // 부드러운 글로우 (미는 범위 힌트)
+    const g = ctx.createRadialGradient(h.px,h.py,0, h.px,h.py, CFG.HAND_RADIUS);
+    g.addColorStop(0, "rgba(255,120,200,.14)");
+    g.addColorStop(1, "rgba(255,120,200,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(h.px,h.py,CFG.HAND_RADIUS,0,Math.PI*2); ctx.fill();
+    // 🖐 손바닥 이모지
+    ctx.font = `${size}px "Apple Color Emoji","Segoe UI Emoji",-apple-system,sans-serif`;
+    ctx.fillText("🖐", h.px, h.py);
+  }
+  ctx.restore();
+}
+
+/* =========================================================================
+   파티클 물리 + 믹서기 채우기
+   ========================================================================= */
+let splashes = [];
+let caughtItems = [];   // 믹서기 안에 쌓인 재료 스티커
+let pourPs = [];        // 세럼병에 붓는 입자
+let lastPour = 0;
+let lastThud = 0;       // 스티커 쌓임 소리 throttle
+let lastCountStep = -1; // 카운트다운 소리 throttle
+const JUICE_COLORS = ["#e23b48", "#f4862b", "#9c1f5e", "#d35bb0", "#c0392b"];
+// 쇼케이스 인터랙션: 세럼 터치 → 스포이드 방울 → 흑백이 컬러로
+let colorReveal = 0;     // (구) 전역 컬러 — 디졸브 등에서만 사용
+let serumDrops = [];     // 스포이드에서 떨어지는 세럼 방울
+let lastDrop = 0;
+let revealDoneAt = 0;    // 컬러 완성된 시각(FACE 종료 타이밍)
+// 국소 미백/발광 효과
+let glowSpots = [];      // 스포이드가 닿은 지점의 빛 스팟
+let touchProgress = 0;   // 얼마나 칠했는지(0~1)
+let finale = 0;          // (사용 안함 유지)
+let faceDropCount = 0;   // 얼굴에 떨어뜨린 방울 수 → 몇 방울이면 변신
+const glowCanvas = document.createElement("canvas");
+const glowCtx = glowCanvas.getContext("2d");
+// 과일 얼굴 변신 + 스티커 채우기
+let fruitFace = "apple";   // 변신할 과일
+let fieldStickers = [];    // 얼굴 뒤에서 화면을 채우는 스티커 군집(공간감)
+let posterDinged = false;
+// 타임어택 / 리더보드
+let playerId = "@guest";
+let fillSeconds = 0;       // 재료 다 담는 데 걸린 초
+let playerRank = 1, playerTotal = 1;
+let runScored = false;     // 이번 라운드 점수 기록 여부
+const igInput = document.getElementById("igInput");
+const igPanel = document.getElementById("igPanel");
+const START_MS = 1300;     // 'START' 문구 노출 시간
+function loadLB(){ try { return JSON.parse(localStorage.getItem("abc_lb") || "[]"); } catch(e){ return []; } }
+
+/* ===== 데이터 수집: 게임 종료 시 구글 시트(Apps Script)로 전송 (아이패드/사파리 OK) =====
+   엔드포인트(구글 Apps Script 웹앱 URL) 설정 우선순위:
+     1) 주소창에 ?ep=<URL> 을 한 번 열면 → 기기에 저장(이후 그냥 열어도 적용)  ← 아이패드 권장
+     2) 아래 SHEET_ENDPOINT 상수
+   엔드포인트가 없어도 기록은 기기 큐(localStorage)에 안전 보관 → 나중에 설정 시 일괄 전송 */
+const SHEET_ENDPOINT = "https://script.google.com/macros/s/AKfycbwn6Ba9uWjfWbl0F2nkGa7_0Vx-Un906laAKzMqlswaDSilFwdnRuAEW73Gz1Kr5FrC/exec";
+function getEndpoint(){
+  try {
+    const u = new URLSearchParams(location.search).get("ep");
+    if (u){ localStorage.setItem("abc_endpoint", u); }   // URL로 주면 저장
+  } catch(e){}
+  let saved = ""; try { saved = localStorage.getItem("abc_endpoint") || ""; } catch(e){}
+  return saved || SHEET_ENDPOINT;
+}
+function queueRecord(rec){
+  try { const q = JSON.parse(localStorage.getItem("abc_queue")||"[]"); q.push(rec);
+        localStorage.setItem("abc_queue", JSON.stringify(q)); } catch(e){}
+}
+let flushing = false;
+async function flushQueue(){
+  const ep = getEndpoint();
+  if (!ep || flushing) return;
+  let q; try { q = JSON.parse(localStorage.getItem("abc_queue")||"[]"); } catch(e){ q = []; }
+  if (!q.length) return;
+  flushing = true;
+  const remain = [];
+  for (const rec of q){
+    try {
+      await fetch(ep, { method:"POST", mode:"no-cors", keepalive:true,
+        headers:{ "Content-Type":"text/plain;charset=utf-8" }, body: JSON.stringify(rec) });
+    } catch(e){ remain.push(rec); }   // 오프라인 등 실패 → 다음에 재전송
+  }
+  try { localStorage.setItem("abc_queue", JSON.stringify(remain)); } catch(e){}
+  flushing = false;
+}
+function submitToSheet(rec){ queueRecord(rec); flushQueue(); }
+function getDeviceId(){
+  let id = ""; try { id = localStorage.getItem("abc_device") || ""; } catch(e){}
+  if (!id){ id = "dev_" + Math.random().toString(36).slice(2,8); try { localStorage.setItem("abc_device", id); } catch(e){} }
+  return id;
+}
+
+function scoreRun(id, sec){
+  const lb = loadLB();
+  lb.push({ id, sec });
+  lb.sort((a,b)=> a.sec - b.sec);
+  localStorage.setItem("abc_lb", JSON.stringify(lb.slice(0,1000)));
+  playerRank = lb.filter(e => e.sec < sec).length + 1;
+  playerTotal = lb.length;
+  // 중앙 수집(구글 시트)
+  let ts = ""; try { ts = new Date().toISOString(); } catch(e){}
+  submitToSheet({ id, sec, ts, rank: playerRank, device: getDeviceId() });
+}
+function scoreLine(){
+  return `${playerId} · ${fillSeconds.toFixed(1)}초 · ${playerRank}등 / ${playerTotal}명`;
+}
+function updateParticles(now, interactive = true){
+  const it = blenderInterior();
+  const mouthY = it.innerTop;
+  // 잡기 쉽게 유리병보다 넉넉한 입구 폭
+  const mouthL = it.cx - it.innerW*1.35, mouthR = it.cx + it.innerW*1.35;
+
+  if (now - lastSpawn > CFG.SPAWN_INTERVAL){ spawnParticle(); lastSpawn = now; }
+
+  for (let i = particles.length-1; i>=0; i--){
+    const p = particles[i];
+    p.vy += CFG.GRAVITY;
+    // 손바닥에 닿으면: 위로 톡 튕겨오르며 믹서기 중심 쪽으로 (포물선)
+    for (const h of (interactive ? hands : [])){
+      const dx = p.x - h.px, dy = p.y - h.py;
+      const d = Math.hypot(dx,dy);
+      if (d < CFG.HAND_RADIUS && d > 0.1){
+        const force = (1 - d/CFG.HAND_RADIUS) * CFG.HAND_PUSH;
+        p.vy -= force * 0.8;                              // 위로 살짝 튕김(팝)
+        p.vx += Math.sign(it.cx - p.x) * force * 1.3;     // 믹서기 중심 쪽으로
+        p.vx += (dx/d) * force * 0.3;                      // 손에서 살짝 밀림
+      }
+    }
+    const MAXV = 13;
+    p.vx = Math.max(-MAXV, Math.min(MAXV, p.vx));
+    if (p.vy < -8) p.vy = -8;                              // 너무 높이 솟지 않게
+    p.vx *= 0.985;
+    p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+    // 좌우 벽 튕김
+    if (p.x < 16){ p.x = 16; p.vx = Math.abs(p.vx)*0.5; }
+    if (p.x > W-16){ p.x = W-16; p.vx = -Math.abs(p.vx)*0.5; }
+
+    // 믹서기 입구 진입 → 캐치 → 병 안으로 떨어져 물리적으로 쌓임 (대기 중엔 캐치 안 함)
+    if (interactive && p.y > mouthY-30 && p.y < mouthY+130 && p.x > mouthL && p.x < mouthR && p.vy > 0){
+      if (fill < CFG.FILL_TARGET){
+        const jl = it.cx - it.innerW/2, jr = it.cx + it.innerW/2;
+        const r = p.size * 0.48;                          // 충돌 반경(벽 안에 머물게)
+        caughtItems.push({
+          type: p.type, size: p.size, r,
+          x: Math.max(jl+r, Math.min(jr-r, p.x)),         // 잡힌 x에서 떨어짐
+          y: it.innerTop + r,
+          vx: p.vx*0.2, vy: 2,
+          rot: p.rot, vr: (Math.random()-0.5)*0.06,
+        });
+        fill = caughtItems.length;
+        sfxPop();   // 재료가 믹서기에 톡
+      }
+      blenderShake = 8;
+      for(let s=0;s<8;s++) splashes.push({x:p.x,y:mouthY,vx:(Math.random()-0.5)*4,vy:-Math.random()*3,life:1,c:COLORS[p.type]||"#fff"});
+      particles.splice(i,1);
+      continue;
+    }
+    // 화면 밖
+    if (p.y > H+60) particles.splice(i,1);
+  }
+
+  // splash 업데이트
+  for(let i=splashes.length-1;i>=0;i--){ const s=splashes[i];
+    s.vy+=0.2; s.x+=s.vx; s.y+=s.vy; s.life-=0.04;
+    if(s.life<=0) splashes.splice(i,1); }
+
+  if (blenderShake>0) blenderShake*=0.85;
+
+  if (fill >= CFG.FILL_TARGET){
+    if (!runScored){                       // 재료 다 담은 순간 = 기록
+      fillSeconds = Math.max(0.1, (now - stateStart) / 1000);
+      scoreRun(playerId, fillSeconds);
+      runScored = true;
+    }
+    sfxBlend(); setState(STATE.BLENDING);
+  }
+}
+
+/* 병 안에 쌓인 재료들의 간단 물리 (중력 + 벽/바닥/상호 충돌) → 랜덤하게 쌓임 */
+function updatePile(){
+  if (!caughtItems.length) return;
+  const it = blenderInterior();
+  const jl = it.cx - it.innerW/2, jr = it.cx + it.innerW/2, floor = it.innerBot;
+  const G = 0.7;
+  for (const c of caughtItems){
+    c.vy += G;
+    c.x += c.vx; c.y += c.vy; c.rot += c.vr;
+    c.vr *= 0.96;
+    // 벽
+    if (c.x < jl + c.r){ c.x = jl + c.r; c.vx = Math.abs(c.vx)*0.3; }
+    if (c.x > jr - c.r){ c.x = jr - c.r; c.vx = -Math.abs(c.vx)*0.3; }
+    // 바닥
+    if (c.y > floor - c.r){ c.y = floor - c.r; c.vy *= -0.25; c.vx *= 0.8; }
+    c.vx *= 0.99;
+  }
+  // 상호 충돌(밀어내기) — 여러 번 풀어 안정화
+  for (let pass = 0; pass < 3; pass++){
+    for (let a = 0; a < caughtItems.length; a++){
+      for (let b = a+1; b < caughtItems.length; b++){
+        const A = caughtItems[a], B = caughtItems[b];
+        let dx = B.x - A.x, dy = B.y - A.y;
+        let d = Math.hypot(dx, dy) || 0.01;
+        const min = (A.r + B.r) * 0.62;     // 많이 겹치게 → 봉투처럼 빽빽한 더미
+        if (d < min){
+          const push = (min - d) / 2;
+          const nx = dx/d, ny = dy/d;
+          A.x -= nx*push; A.y -= ny*push;
+          B.x += nx*push; B.y += ny*push;
+          const rv = (B.vy - A.vy)*0.5;
+          A.vy += rv*0.2; B.vy -= rv*0.2;
+        }
+      }
+    }
+    // 충돌 해소 후 벽/바닥 재적용
+    for (const c of caughtItems){
+      if (c.x < jl + c.r) c.x = jl + c.r;
+      if (c.x > jr - c.r) c.x = jr - c.r;
+      if (c.y > floor - c.r) c.y = floor - c.r;
+    }
+  }
+}
+
+function drawSplashes(){
+  for(const s of splashes){ ctx.globalAlpha=Math.max(0,s.life); ctx.fillStyle=s.c;
+    ctx.beginPath(); ctx.arc(s.x,s.y,3,0,Math.PI*2); ctx.fill(); }
+  ctx.globalAlpha=1;
+}
+
+/* =========================================================================
+   상단 게이지
+   ========================================================================= */
+function drawGauge(){
+  const ratio = fill/CFG.FILL_TARGET;
+  const gw = Math.min(420, W*0.5), gh=14, gx=(W-gw)/2, gy=40;
+  ctx.fillStyle="rgba(255,255,255,.12)"; roundRect(gx,gy,gw,gh,7); ctx.fill();
+  const grad=ctx.createLinearGradient(gx,0,gx+gw,0);
+  grad.addColorStop(0,"#ff7a59"); grad.addColorStop(.5,"#ff3b8d"); grad.addColorStop(1,"#9b59ff");
+  ctx.fillStyle=grad; roundRect(gx,gy,gw*ratio,gh,7); ctx.fill();
+  ctx.fillStyle="rgba(255,255,255,.85)"; ctx.font="600 14px -apple-system,sans-serif"; ctx.textAlign="center";
+  ctx.fillText(`믹서기 ${Math.round(ratio*100)}%`, W/2, gy-8);
+}
+
+function centerText(big, small){
+  ctx.textAlign="center";
+  ctx.fillStyle="rgba(255,255,255,.95)"; ctx.font="800 34px -apple-system,sans-serif";
+  ctx.fillText(big, W/2, 120);
+  if(small){ ctx.fillStyle="rgba(255,255,255,.6)"; ctx.font="500 17px -apple-system,sans-serif";
+    ctx.fillText(small, W/2, 152); }
+}
+// 한 번 통 튀어오르는 텍스트 (ease-out-back), t=상태 경과(ms)
+function popText(text, t){
+  const p = Math.min(1, t/520);
+  const c1=1.70158, c3=c1+1;
+  const ease = 1 + c3*Math.pow(p-1,3) + c1*Math.pow(p-1,2);   // ease-out-back
+  const scale = 0.3 + ease*0.7;
+  const yBob = (1-p) * -22;                                    // 살짝 위에서 안착
+  ctx.save();
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.translate(W/2, 116 + yBob); ctx.scale(scale, scale);
+  ctx.fillStyle="#fff"; ctx.font='800 40px -apple-system,"Apple SD Gothic Neo",sans-serif';
+  ctx.shadowColor="rgba(255,60,140,.6)"; ctx.shadowBlur=18;
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+/* 쇼케이스 세럼 위치/크기 (터치 판정과 공유) */
+function showcaseRect(){
+  const dh = H*0.5, cx = W/2, cy = H*0.36;
+  let ratio = 0.5;
+  if (spinVideo.readyState >= 2 && spinVideo.videoWidth) ratio = spinVideo.videoWidth/spinVideo.videoHeight;
+  else if (ASSETS.serum) ratio = ASSETS.serum.naturalWidth/ASSETS.serum.naturalHeight;
+  return { cx, cy, dw: dh*ratio, dh };
+}
+
+/* 그린스크린 회전 영상을 크로마키해서 그림 (배경 그린 → 투명) */
+let keyOK = true;   // getImageData 실패(예: file:// 보안제약) 시 false → 정적 대체
+function drawSerumKeyed(alpha){
+  const { cx, cy, dh } = showcaseRect();
+  if (keyOK && spinReady && spinVideo.videoWidth){
+    try {
+      const vr = spinVideo.videoWidth/spinVideo.videoHeight;
+      const cw = Math.round(dh*vr), ch = Math.round(dh);
+      if (keyCanvas.width !== cw || keyCanvas.height !== ch){ keyCanvas.width = cw; keyCanvas.height = ch; }
+      keyCtx.clearRect(0,0,cw,ch);
+      keyCtx.drawImage(spinVideo, 0,0, cw, ch);
+      const img = keyCtx.getImageData(0,0,cw,ch); const d = img.data;   // ← 보안제약 시 throw
+      for (let i=0;i<d.length;i+=4){
+        const r=d[i], g=d[i+1], b=d[i+2];
+        if (g>90 && g>r*1.2 && g>b*1.2) d[i+3]=0;
+        else if (g>70 && g>r*1.05 && g>b*1.05) d[i+3]=Math.min(d[i+3],70);
+      }
+      keyCtx.putImageData(img,0,0);
+      ctx.save(); ctx.globalAlpha = alpha;
+      ctx.drawImage(keyCanvas, cx-cw/2, cy-ch/2, cw, ch);
+      ctx.restore();
+      return;
+    } catch(e){ keyOK = false; }   // 한 번 실패하면 이후 정적 이미지로
+  }
+  // 정적 대체: 라벨 세럼 이미지(투명) — 회전은 없지만 안전
+  if (ASSETS.serum){
+    const sw = dh * (ASSETS.serum.naturalWidth/ASSETS.serum.naturalHeight);
+    ctx.save(); ctx.globalAlpha = alpha; ctx.translate(cx,cy); drawImageCentered(ASSETS.serum, sw); ctx.restore();
+  }
+}
+
+/* 어두운 제품 배경(회전 쇼케이스용) */
+// 제품 배경 — 검정 + 병 주위 은은한 보라 글로우 (영상 배경도 검정이라 이음새 없음)
+function drawProductBG(alpha = 1){
+  ctx.save(); ctx.globalAlpha = alpha;
+  ctx.fillStyle = "#000"; ctx.fillRect(0,0,W,H);
+  const g = ctx.createRadialGradient(W/2,H*0.4,0, W/2,H*0.4, H*0.6);
+  g.addColorStop(0,"rgba(120,30,110,.28)"); g.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+  ctx.restore();
+}
+// 회전 영상(검정 배경)을 그대로 그림 — 키잉 불필요, 어디서나 360 재생
+function drawSerumSpin(alpha){
+  const { cx, cy, dh } = showcaseRect();
+  ctx.save(); ctx.globalAlpha = alpha;
+  if (spinVideo.readyState >= 2 && spinVideo.videoWidth){
+    const dw = dh * (spinVideo.videoWidth/spinVideo.videoHeight);
+    ctx.drawImage(spinVideo, cx-dw/2, cy-dh/2, dw, dh);
+  } else if (ASSETS.serum){
+    const sw = dh * (ASSETS.serum.naturalWidth/ASSETS.serum.naturalHeight);
+    ctx.translate(cx,cy); drawImageCentered(ASSETS.serum, sw);
+  }
+  ctx.restore();
+}
+
+/* 얼굴 배경 — reveal: 0=흑백, 1=컬러+엄청 밝게 */
+// 영상을 화면에 늘려-거울 그리기 (정규좌표 nx → 화면 (1-nx)*W 로 손/얼굴과 좌표 일치)
+function drawVideoStretch(filter){
+  ctx.save();
+  if (filter) ctx.filter = filter;
+  ctx.translate(W, 0); ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0, W, H);
+  ctx.restore();
+}
+function drawFaceBG(reveal){
+  if (video.readyState < 2 || !video.videoWidth){ ctx.fillStyle="#000"; ctx.fillRect(0,0,W,H); return; }
+  drawVideoStretch(`brightness(${0.9 + reveal*1.0}) saturate(${1.05 + reveal*0.5})`);
+  if (reveal < 0.99){
+    ctx.save(); ctx.globalAlpha = 1 - reveal;
+    drawVideoStretch("grayscale(1) contrast(1.05) brightness(0.82)");
+    ctx.restore();
+  }
+  if (reveal > 0.01){
+    ctx.save(); ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = `rgba(255,255,255,${reveal*0.22})`; ctx.fillRect(0,0,W,H);
+    ctx.restore();
+  }
+}
+
+/* 스포이드가 닿은 지점에 빛 스팟 추가/강화 */
+function addGlowSpot(x, y){
+  for (const sp of glowSpots){
+    if (Math.hypot(sp.x-x, sp.y-y) < sp.r*0.55){
+      sp.target = 1; sp.maxR = Math.min(H*0.20, sp.maxR + 1.4); return;
+    }
+  }
+  if (glowSpots.length < 18) glowSpots.push({ x, y, r: 10, maxR: H*0.13, s: 0, target: 1 });
+}
+function updateGlowSpots(){
+  for (const sp of glowSpots){
+    sp.s += (sp.target - sp.s) * 0.08;
+    sp.r += (sp.maxR - sp.r) * 0.06;
+  }
+}
+
+/* 뷰티 보정된 컬러 얼굴 — 밝기/화사함 + 부드러운 스킨 글로우(이목구비는 보존) */
+function drawBeautyColor(finale){
+  // 1) 화사한 컬러 베이스
+  drawVideoStretch(`brightness(${1.08 + finale*0.12}) saturate(${1.16 + finale*0.18}) contrast(0.97)`);
+  // 2) 블러 복사본을 soft-light로 → 피부 매끈/광채 (디테일은 유지)
+  ctx.save(); ctx.globalCompositeOperation = "soft-light"; ctx.globalAlpha = 0.55;
+  drawVideoStretch("blur(7px) brightness(1.2) saturate(1.1)");
+  ctx.restore();
+  // 3) 살짝 따뜻한 핑크 톤(혈색)
+  ctx.save(); ctx.globalCompositeOperation = "soft-light";
+  ctx.fillStyle = "rgba(255,200,210,0.22)"; ctx.fillRect(0,0,W,H);
+  ctx.restore();
+}
+
+/* 배경 얼굴은 흑백 유지, '실제 얼굴' 안에서 닿은 지점만 예쁘게 뷰티 보정. finale=전체 마무리 */
+function drawFaceLocalized(finale){
+  if (video.readyState < 2 || !video.videoWidth){ ctx.fillStyle="#000"; ctx.fillRect(0,0,W,H); return; }
+  // 1) 전체 흑백 베이스
+  drawVideoStretch("grayscale(1) contrast(1.05) brightness(0.82)");
+
+  // 2) 실제 얼굴 외곽선 안에서만 뷰티 컬러 (없으면 중앙 타원 fallback)
+  ctx.save();
+  if (facePoly){
+    traceFacePath(ctx, facePoly); ctx.clip();
+  } else {
+    ctx.beginPath(); ctx.ellipse(W/2, H*0.42, W*0.24, H*0.32, 0, 0, Math.PI*2); ctx.clip();
+  }
+
+  drawBeautyColor(finale);
+
+  // 흑백(스팟 구멍) 오프스크린 → 안 닿은 곳은 흑백, finale로 전체 페이드
+  if (glowCanvas.width !== W || glowCanvas.height !== H){ glowCanvas.width = W; glowCanvas.height = H; }
+  glowCtx.setTransform(1,0,0,1,0,0); glowCtx.clearRect(0,0,W,H);
+  glowCtx.save();
+  glowCtx.filter = "grayscale(1) contrast(1.05) brightness(0.82)";
+  glowCtx.translate(W, 0); glowCtx.scale(-1, 1); glowCtx.drawImage(video, 0, 0, W, H);
+  glowCtx.restore();
+  glowCtx.globalCompositeOperation = "destination-out";
+  for (const sp of glowSpots){
+    const g = glowCtx.createRadialGradient(sp.x,sp.y,0, sp.x,sp.y, sp.r);
+    g.addColorStop(0, `rgba(0,0,0,${0.96*sp.s})`);
+    g.addColorStop(0.6, `rgba(0,0,0,${0.5*sp.s})`);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    glowCtx.fillStyle = g; glowCtx.beginPath(); glowCtx.arc(sp.x,sp.y,sp.r,0,Math.PI*2); glowCtx.fill();
+  }
+  glowCtx.globalCompositeOperation = "source-over";
+  ctx.save(); ctx.globalAlpha = 1 - finale; ctx.drawImage(glowCanvas, 0, 0, W, H); ctx.restore();
+
+  // 아주 은은한 광채(이목구비 보존 위해 약하게, soft-light)
+  ctx.globalCompositeOperation = "soft-light";
+  for (const sp of glowSpots){
+    const a = sp.s * 0.45, R = sp.r*1.1;
+    const g = ctx.createRadialGradient(sp.x,sp.y,0, sp.x,sp.y, R);
+    g.addColorStop(0, `rgba(255,240,245,${a})`);
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sp.x,sp.y,R,0,Math.PI*2); ctx.fill();
+  }
+  ctx.restore();   // 클립 해제
+}
+
+/* === 과일 얼굴(어노잉 오렌지) 변신 === */
+// 실제 눈/입 영상을 원하는 위치/크기로 얹음 (lms = 해당 얼굴 랜드마크)
+function drawFeaturePatchAt(idxs, dcx, dcy, drx, dry, lms){
+  if (!lms) return;
+  const bb = lmBox(idxs, lms);
+  const sX = drx / Math.max(8, bb.rx*1.5);
+  const sY = dry / Math.max(8, bb.ry*1.7);
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(dcx, dcy, drx, dry, 0, 0, Math.PI*2); ctx.clip();
+  ctx.translate(dcx, dcy); ctx.scale(sX, sY); ctx.translate(-bb.cx, -bb.cy);
+  drawVideoStretch(null);   // 라이브 컬러(실제 눈/입)
+  ctx.restore();
+}
+function boundsOfPoly(poly){
+  let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
+  for (const p of poly){ if(p.x<minx)minx=p.x; if(p.x>maxx)maxx=p.x; if(p.y<miny)miny=p.y; if(p.y>maxy)maxy=p.y; }
+  return { cx:(minx+maxx)/2, cy:(miny+maxy)/2, w:maxx-minx, h:maxy-miny };
+}
+function faceBounds(){
+  return facePoly ? boundsOfPoly(facePoly) : { cx:W/2, cy:H*0.4, w:W*0.4, h:H*0.5 };
+}
+// 과일별 '몸통' 앵커(이미지 내 얼굴 자리 중심 ax,ay)·몸통 반폭(hw)·크기배율(mult) — 실측 기반
+// oy: 전체 세로 보정(- = 위로). 과일별 얼굴 정렬 미세조정
+const FRUIT_FACE = {
+  apple:  { ax:0.50, ay:0.49, hw:0.15,  mult:5.0, oy: 0.0  },
+  beet:   { ax:0.45, ay:0.55, hw:0.105, mult:5.2, oy:-0.09 },
+  carrot: { ax:0.44, ay:0.57, hw:0.095, mult:6.4, oy: 0.0  },
+};
+// 한 얼굴에 과일 머리 + 실제 눈·입 얹기 (face.fruit = 트래킹으로 고정된 과일)
+function drawOneFruitHead(face, scale = 1){
+  const b = boundsOfPoly(face.poly);
+  const ft = face.fruit || "apple";
+  const cfg = FRUIT_FACE[ft] || FRUIT_FACE.apple;
+  const img = ASSETS[ft];
+  const fw = Math.min(Math.max(b.w, b.h) * cfg.mult, H * 5.5) * scale;
+  // 과일의 '얼굴 자리(anchor ax,ay)'가 실제 얼굴 중심에 오도록 이미지를 이동 (+ oy 세로보정)
+  const fcx = b.cx, fcy = b.cy + (cfg.oy||0)*fw;
+  const imgCx = fcx - (cfg.ax-0.5)*fw;
+  const imgCy = fcy - (cfg.ay-0.5)*fw;
+  if (img){ ctx.save(); ctx.translate(imgCx, imgCy); drawImageCentered(img, fw); ctx.restore(); }
+  else { ctx.save(); ctx.fillStyle=COLORS[ft]; ctx.beginPath(); ctx.arc(fcx,fcy,fw*cfg.hw*1.1,0,Math.PI*2); ctx.fill(); ctx.restore(); }
+  // 눈·입은 보정된 얼굴 중심(fcx,fcy) 기준
+  const hw = cfg.hw*fw;
+  const eyeDX = hw*0.5, eyeRx = hw*0.42, eyeRy = hw*0.30;
+  drawFeaturePatchAt(RIGHT_EYE, fcx - eyeDX, fcy - hw*0.35, eyeRx, eyeRy, face.lms);
+  drawFeaturePatchAt(LEFT_EYE,  fcx + eyeDX, fcy - hw*0.35, eyeRx, eyeRy, face.lms);
+  drawFeaturePatchAt(MOUTH,     fcx,         fcy + hw*0.70, hw*0.6, hw*0.4, face.lms);
+}
+// 인식된 모든 얼굴 변신
+function drawFruitHead(scale = 1){
+  for (const f of faces) drawOneFruitHead(f, scale);
+}
+function drawFruitFace(){
+  // 배경에 실제 사람들(웹캠) 노출
+  if (video.readyState >= 2 && video.videoWidth) drawVideoStretch("brightness(1.03) saturate(1.06)");
+  else { ctx.fillStyle = "#fff"; ctx.fillRect(0,0,W,H); }
+  drawFruitHead();
+}
+
+/* === 'COMING SOON' 글자를 작은 스티커들이 모여 형성 (얼굴 뒤 타이포그래피) === */
+function initField(){
+  fieldStickers = [];
+  // 글자를 오프스크린에 렌더 → 픽셀 샘플링 → 그 위치에 스티커 배치
+  const tc = document.createElement("canvas"); tc.width = W; tc.height = H;
+  const tx = tc.getContext("2d");
+  tx.fillStyle = "#000"; tx.textAlign = "center"; tx.textBaseline = "middle";
+  const lines = ["COMING", "SOON"];
+  let fs = H * 0.27;
+  tx.font = `900 ${fs}px Arial, "Arial Black", sans-serif`;
+  const widest = Math.max(...lines.map(l => tx.measureText(l).width));
+  if (widest > W*0.92){ fs *= (W*0.92)/widest; tx.font = `900 ${fs}px Arial, "Arial Black", sans-serif`; }
+  const y0 = H*0.5 - fs*0.52;
+  lines.forEach((l,i) => tx.fillText(l, W/2, y0 + i*fs*1.02));
+  const data = tx.getImageData(0,0,W,H).data;
+  const stride = Math.max(15, Math.round(fs/10));     // 샘플 간격(글자 밀도)
+  for (let y=0; y<H; y+=stride){
+    for (let x=0; x<W; x+=stride){
+      if (data[(y*W + x)*4 + 3] > 128){                // 글자가 칠해진 픽셀
+        fieldStickers.push({
+          tx: x + (Math.random()-0.5)*stride*0.5,
+          ty: y + (Math.random()-0.5)*stride*0.5,
+          size: stride*1.8 + Math.random()*stride*0.7,
+          type: TYPES[(Math.random()*3)|0],
+          rot: (Math.random()-0.5)*0.5,
+          delay: Math.random()*0.5,
+        });
+      }
+    }
+  }
+}
+function drawField(p){
+  const b = faceBounds();
+  for (const s of fieldStickers){
+    const lp = Math.max(0, Math.min(1, (p - s.delay)/(1 - s.delay)));
+    const e = 1 - Math.pow(1-lp, 3);                  // ease-out
+    if (e <= 0.01) continue;
+    const x = b.cx + (s.tx - b.cx)*e;                 // 얼굴 중심 → 목표로 펑
+    const y = b.cy + (s.ty - b.cy)*e;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(s.rot * e);
+    ctx.shadowColor = "rgba(0,0,0,.18)"; ctx.shadowBlur = 12; ctx.shadowOffsetY = 6;
+    if (ASSETS[s.type]) drawImageCentered(ASSETS[s.type], s.size*e);
+    else { ctx.fillStyle=COLORS[s.type]; ctx.beginPath(); ctx.arc(0,0,s.size*e*0.4,0,Math.PI*2); ctx.fill(); }
+    ctx.restore();
+  }
+}
+
+// 서브 타이틀 (제품명) — 웹캠 위에서도 보이게 흰색+그림자
+function drawEndCard(){
+  ctx.save();
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.shadowColor = "rgba(0,0,0,.55)"; ctx.shadowBlur = 12; ctx.shadowOffsetY = 3;
+  ctx.fillStyle = "#fff";
+  ctx.font = `800 ${Math.round(Math.min(W*0.04,36))}px -apple-system, "Apple SD Gothic Neo", sans-serif`;
+  ctx.fillText("하루나 ABC 스무디 세럼", W/2, H*0.90);
+  ctx.restore();
+}
+
+/* 스티커 느낌 텍스트(두꺼운 흰 다이컷 테두리 + 그라데이션 + 통 튀어오름) — 폭 자동 맞춤 */
+function stickerText(text, t, cy, maxWidthFrac = 0.9){
+  const p = Math.min(1, t/420);
+  const c1=1.70158, c3=c1+1;
+  const ease = 1 + c3*Math.pow(p-1,3) + c1*Math.pow(p-1,2);
+  const scale = 0.2 + ease*0.8;
+  ctx.save();
+  ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.lineJoin="round";
+  let fs = Math.min(W*0.16, 180);
+  ctx.font = `900 ${fs}px Arial, "Arial Black", sans-serif`;
+  const tw = ctx.measureText(text).width;
+  if (tw > W*maxWidthFrac){ fs *= (W*maxWidthFrac)/tw; ctx.font = `900 ${fs}px Arial, "Arial Black", sans-serif`; }
+  ctx.translate(W/2, cy); ctx.scale(scale, scale);
+  ctx.shadowColor="rgba(0,0,0,.4)"; ctx.shadowBlur=24; ctx.shadowOffsetY=14;
+  ctx.strokeStyle="#fff"; ctx.lineWidth=fs*0.17; ctx.strokeText(text, 0, 0);  // 흰 다이컷 테두리
+  ctx.shadowColor="transparent";
+  const grad = ctx.createLinearGradient(-W*0.4, 0, W*0.4, 0);
+  grad.addColorStop(0,"#ff7a59"); grad.addColorStop(.5,"#ff3b8d"); grad.addColorStop(1,"#9b59ff");
+  ctx.fillStyle=grad; ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+function drawStartText(t){ stickerText("START", t, H*0.42); }
+
+/* 랭킹표(우상단) — 변신 단계에서 표시 */
+// 시상 티어: 1등 1명 / 2등 5명(2~6위) / 3등 10명(7~16위)
+const PRIZE_TIERS = [
+  { label:"🥇 1등", color:"#ffd54a", from:0,  to:1  },
+  { label:"🥈 2등", color:"#d7dee8", from:1,  to:6  },
+  { label:"🥉 3등", color:"#e3ad7e", from:6,  to:16 },
+];
+function myTierLabel(){
+  const r = playerRank;
+  if (r <= 1) return "🥇 1등";
+  if (r <= 6) return "🥈 2등";
+  if (r <= 16) return "🥉 3등";
+  return "순위권 밖";
+}
+function drawLeaderboard(){
+  const lb = loadLB();
+  // 그릴 행 구성
+  const rows = [];
+  for (const ti of PRIZE_TIERS){
+    rows.push({ h:true, label:ti.label, color:ti.color, count:ti.to-ti.from });
+    const slice = lb.slice(ti.from, ti.to);
+    if (slice.length === 0) rows.push({ empty:true });
+    else slice.forEach((e, j) => rows.push({ e, rank: ti.from+j+1 }));
+  }
+  const pw = Math.min(360, W*0.34), x = W - pw - 22, y = 64;
+  const headH = 30, rowH = 25, titleH = 36, footH = 38, pad = 12;
+  let bodyH = 0; for (const r of rows) bodyH += (r.h ? headH : rowH);
+  const ph = titleH + bodyH + footH + pad;
+  ctx.save();
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "rgba(10,4,14,.7)"; roundRect(x, y, pw, ph, 16); ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.16)"; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = "#fff"; ctx.textAlign = "left"; ctx.font = '800 20px -apple-system,sans-serif';
+  ctx.fillText("🏆 랭킹", x+18, y+22);
+  let cy = y + titleH;
+  for (const r of rows){
+    if (r.h){
+      ctx.textAlign="left"; ctx.fillStyle = r.color; ctx.font = '800 17px -apple-system,"Apple SD Gothic Neo",sans-serif';
+      ctx.fillText(`${r.label}  (${r.count}명)`, x+16, cy + headH/2);
+      cy += headH;
+    } else if (r.empty){
+      ctx.textAlign="left"; ctx.fillStyle="rgba(255,255,255,.4)"; ctx.font='600 14px -apple-system,"Apple SD Gothic Neo",sans-serif';
+      ctx.fillText("아직 없음", x+34, cy + rowH/2); cy += rowH;
+    } else {
+      const me = (r.e.id === playerId && Math.abs(r.e.sec - fillSeconds) < 0.05);
+      ctx.fillStyle = me ? "#ffe27a" : "rgba(255,255,255,.85)";
+      ctx.font = `${me?800:600} 15px -apple-system,"Apple SD Gothic Neo",sans-serif`;
+      ctx.textAlign="left";  ctx.fillText(`${r.rank}. ${r.e.id}`.slice(0,20), x+34, cy + rowH/2);
+      ctx.textAlign="right"; ctx.fillText(`${r.e.sec.toFixed(1)}s`, x+pw-16, cy + rowH/2);
+      cy += rowH;
+    }
+  }
+  ctx.textAlign="center"; ctx.fillStyle="#ffe27a"; ctx.font='800 15px -apple-system,"Apple SD Gothic Neo",sans-serif';
+  ctx.fillText(`내 기록 ${fillSeconds.toFixed(1)}s · ${playerRank}위 (${myTierLabel()})`, x+pw/2, y+ph-19);
+  ctx.restore();
+}
+
+/* 스포이드 커서 — 손 위치에 검은 스포이드, 끝에서 세럼 방울 */
+function drawDropper(h){
+  const wr = h.points[0], mid = h.points[9];
+  const palm = Math.hypot(wr.x-mid.x, wr.y-mid.y);
+  const s = Math.max(40, Math.min(80, palm*0.9));    // 손가락만 한 크기
+  const tip = h.points[8];                            // 검지 손가락 끝
+  ctx.save();
+  ctx.translate(tip.x, tip.y);                        // 스포이드 팁이 손끝에 걸림
+  // 글로우(작게)
+  const g = ctx.createRadialGradient(0,-s*0.4,0, 0,-s*0.4, s*0.7);
+  g.addColorStop(0,"rgba(255,150,210,.16)"); g.addColorStop(1,"rgba(255,150,210,0)");
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,-s*0.4,s*0.7,0,Math.PI*2); ctx.fill();
+  const w = s*0.16;
+  // 고무 벌브
+  ctx.fillStyle = "#15151a";
+  roundRect(-w*1.3, -s, w*2.6, s*0.34, w*0.9); ctx.fill();
+  // 유리관(검정)
+  ctx.fillStyle = "#1d1d24";
+  roundRect(-w*0.7, -s*0.7, w*1.4, s*0.62, w*0.5); ctx.fill();
+  // 팁
+  ctx.fillStyle = "#15151a";
+  ctx.beginPath(); ctx.moveTo(-w*0.55,-s*0.1); ctx.lineTo(w*0.55,-s*0.1); ctx.lineTo(0,0); ctx.closePath(); ctx.fill();
+  // 끝에 맺힌 세럼 방울
+  ctx.fillStyle = COLORS.apple;
+  ctx.beginPath(); ctx.ellipse(0, s*0.04, w*0.5, w*0.7, 0, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+/* 좌표가 얼굴(중앙) 영역 안인가 */
+function inFaceZone(x, y){
+  const cx = W/2, cy = H*0.42, rx = W*0.30, ry = H*0.36;
+  const dx = (x-cx)/rx, dy = (y-cy)/ry;
+  return dx*dx + dy*dy < 1;
+}
+/* 스포이드 팁(손끝)에서 떨어지는 세럼 방울 */
+function spawnFaceDropAt(pt){
+  serumDrops.push({
+    x: pt.x + (Math.random()-0.5)*8, y: pt.y + 4,
+    vy: 2+Math.random()*2, vx: (Math.random()-0.5)*0.5,
+    r: 5+Math.random()*4, c: JUICE_COLORS[(Math.random()*JUICE_COLORS.length)|0], life: 1,
+  });
+  sfxDrip();   // 세럼 방울 똑
+}
+function updateSerumDrops(){
+  for (let i=serumDrops.length-1;i>=0;i--){ const p=serumDrops[i];
+    p.vy+=0.35; p.y+=p.vy; p.x+=p.vx; p.life-=0.010;
+    if (p.y>H+20 || p.life<=0) serumDrops.splice(i,1); }
+}
+function drawSerumDrops(){
+  for (const p of serumDrops){
+    ctx.save(); ctx.globalAlpha=Math.max(0,p.life);
+    ctx.fillStyle=p.c; ctx.beginPath(); ctx.ellipse(p.x,p.y,p.r*0.8,p.r*1.25,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="rgba(255,255,255,.5)"; ctx.beginPath(); ctx.arc(p.x-p.r*0.25,p.y-p.r*0.3,p.r*0.25,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+/* 세럼 공병이 아래부터 채워지는 모습 */
+function drawSerumFilling(cx, cy, w, fillRatio){
+  if (!ASSETS.serum) return;
+  const img = ASSETS.serum, h = w*(img.naturalHeight/img.naturalWidth);
+  // 빈 병(희미하게)
+  ctx.save(); ctx.globalAlpha = 0.22; ctx.translate(cx, cy); drawImageCentered(img, w); ctx.restore();
+  // 채워진 부분(아래부터 드러남)
+  ctx.save();
+  const botY = cy + h/2, fillTop = botY - h*Math.max(0,Math.min(1,fillRatio));
+  ctx.beginPath(); ctx.rect(cx - w/2, fillTop, w, botY - fillTop); ctx.clip();
+  ctx.translate(cx, cy); drawImageCentered(img, w);
+  ctx.restore();
+}
+
+/* 붓는 입자 */
+function updatePourParticles(targetY){
+  for (let i = pourPs.length-1; i>=0; i--){
+    const p = pourPs[i]; p.vy += 0.5; p.y += p.vy; p.x += p.vx; p.rot += p.vr||0;
+    if (p.y > targetY) pourPs.splice(i, 1);
+  }
+}
+function drawPourParticles(){
+  for (const p of pourPs){
+    if (p.type && ASSETS[p.type]){            // 스티커가 병으로 들어감
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot||0);
+      drawImageCentered(ASSETS[p.type], p.size);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
+    }
+  }
+}
+
+/* =========================================================================
+   메인 루프
+   ========================================================================= */
+function resetRoundVars(){
+  particles = []; splashes = []; caughtItems = []; pourPs = []; fill = 0; blenderShake = 0;
+  colorReveal = 0; serumDrops = []; revealDoneAt = 0;
+  glowSpots = []; touchProgress = 0; finale = 0; faceDropCount = 0;
+  fieldStickers = []; posterDinged = false; runScored = false;
+  try { spinVideo.pause(); spinVideo.currentTime = 0; } catch(e){}
+}
+// 대기 화면 — 과일은 떨어지지만 손/인터랙션 없음, 아이디 입력 대기
+function goIdle(){
+  resetRoundVars();
+  flushQueue();                 // 미전송 기록 재전송 시도
+  igPanel.classList.add("show");
+  if (igInput) igInput.focus();
+  setState(STATE.IDLE);
+}
+// 아이디 입력 후 라운드 시작
+function beginRound(){
+  let v = (igInput && igInput.value || "").trim().replace(/^@+/, "");
+  playerId = v ? "@" + v.replace(/\s+/g,"") : "@guest";
+  igPanel.classList.remove("show");
+  resetRoundVars();
+  lastCountStep = -1;
+  setState(STATE.STARTING);   // 3·2·1 → START! → RAIN
+}
+
+function loop(now){
+  try { drawFrame(now); }
+  catch(e){ console.error("frame error:", e); }   // 어떤 예외가 나도 루프는 계속
+  requestAnimationFrame(loop);
+}
+
+function drawFrame(now){
+  ctx.clearRect(0,0,W,H);
+  detectHands(now);
+  if (state === STATE.DISSOLVE || state === STATE.FACE || state === STATE.FRUITFACE || state === STATE.POSTER) detectFace(now);
+  const t = now - stateStart;
+
+  if (state === STATE.IDLE){
+    // 대기: 과일은 떨어지지만 손/인터랙션 없음, 아이디 입력 대기
+    updateParticles(now, false);
+    for(const p of particles) drawIngredient(p);
+    drawBlender({});
+    hintEl.style.opacity = "0";
+
+  } else if (state === STATE.STARTING){
+    // 손바닥 안내 → 3 · 2 · 1 → START!
+    updateParticles(now, false);
+    for(const p of particles) drawIngredient(p);
+    drawBlender({});
+    const GUIDE = 1900;
+    if (t < GUIDE){
+      ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.shadowColor="rgba(0,0,0,.6)"; ctx.shadowBlur=16; ctx.shadowOffsetY=4; ctx.fillStyle="#fff";
+      const fs = Math.min(W*0.052, 48);
+      ctx.font = `800 ${fs}px -apple-system,"Apple SD Gothic Neo",sans-serif`;
+      ctx.fillText("🖐 손바닥으로 재료들을 이동시켜서", W/2, H*0.40);
+      ctx.fillText("믹서기에 넣어주세요!", W/2, H*0.40 + fs*1.35);
+      ctx.restore();
+    } else {
+      const ct = t - GUIDE, STEP = 700;
+      const step = Math.floor(ct / STEP);              // 0,1,2=3,2,1 / 3=START!
+      if (step !== lastCountStep && step <= 3){
+        lastCountStep = step;
+        if (step < 3) sfxBeep(); else sfxStartGo();
+      }
+      const sub = ct - step*STEP;                       // 각 항목 바운스
+      if (step <= 2) stickerText(String(3 - step), sub, H*0.42);
+      else           stickerText("START!", sub, H*0.42);
+      if (ct > STEP*4){ particles = []; setState(STATE.RAIN); }
+    }
+
+  } else if (state === STATE.RAIN){
+    updateParticles(now);
+    updatePile();                     // 병 안 재료 물리 업데이트
+    drawHands();
+    for(const p of particles) drawIngredient(p);
+    drawBlender({ shake: blenderShake });
+    drawPile();                       // 병 안에 쌓인 재료
+    drawSplashes();
+    drawGauge();
+    // 실시간 타임어택 타이머 + 플레이어
+    ctx.save(); ctx.textBaseline = "alphabetic";
+    ctx.textAlign = "left"; ctx.fillStyle = "rgba(255,255,255,.92)";
+    ctx.font = '800 30px -apple-system,"Apple SD Gothic Neo",sans-serif';
+    ctx.fillText(`⏱ ${((now - stateStart)/1000).toFixed(1)}s`, 28, 56);
+    ctx.textAlign = "right"; ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.font = '600 18px -apple-system,sans-serif';
+    ctx.fillText(playerId, W-28, 54);
+    ctx.restore();
+    hintEl.style.opacity = "1";
+
+  } else if (state === STATE.BLENDING){
+    hintEl.style.opacity = "0";
+    const prog = Math.min(1, t / CFG.BLEND_MS);
+    drawBlender({ shake: 6 + prog*12 });
+    // 스티커들이 믹서기 중심으로 빨려들어가며 빠르게 회전 → 갈림
+    const it = blenderInterior();
+    const cx = it.cx, cy = (it.innerTop + it.innerBot)/2;
+    ctx.save(); jarClip(it, 12); ctx.clip();
+    const spin = now*0.018 * (1 + prog*4);
+    for (let i = 0; i < caughtItems.length; i++){
+      const c = caughtItems[i];
+      const baseAng = i * (Math.PI*2 / Math.max(1,caughtItems.length));
+      const radius = (1 - prog) * it.innerW * 0.34;
+      const x = cx + Math.cos(baseAng + spin) * radius;
+      const y = cy + Math.sin(baseAng + spin) * radius * 0.7;
+      ctx.save();
+      ctx.translate(x, y); ctx.rotate(spin*1.6 + c.rot);
+      ctx.globalAlpha = 1 - prog*0.7;
+      if (ASSETS[c.type]) drawImageCentered(ASSETS[c.type], c.size * (1 - prog*0.8));
+      ctx.restore();
+    }
+    glassOverlay(it);
+    ctx.restore();
+    centerText("믹서기 가동! 스티커를 가는 중…", "");
+    if (t > CFG.BLEND_MS) { caughtItems = []; sfxPour(); setState(STATE.POURING); }
+
+  } else if (state === STATE.POURING){
+    const prog = Math.min(1, t / CFG.POUR_MS);
+    // 믹서기는 서서히 사라짐
+    if (prog < 0.4){ ctx.save(); ctx.globalAlpha = 1 - prog/0.4; drawBlender({}); ctx.restore(); }
+    // 회전 영상 속 세럼병과 같은 Y·크기로 (전환 시 튐 방지)
+    const bx = W/2, bcy = H*0.36, bw = H*0.12;
+    const bh = ASSETS.serum ? bw*(ASSETS.serum.naturalHeight/ASSETS.serum.naturalWidth) : 400;
+    const fillRatio = Math.min(1, prog*1.12);
+    const liquidTop = (bcy + bh/2) - bh*fillRatio;   // 현재 채워진 수면
+    // 위에서 스티커가 병 속으로 쏟아져 들어감
+    if (prog < 0.92 && now - lastPour > 70){
+      lastPour = now;
+      for (let k=0;k<2;k++) pourPs.push({
+        x: bx + (Math.random()-0.5)*30, y: H*0.04,
+        vx: (Math.random()-0.5)*0.8, vy: 6 + Math.random()*3,
+        type: TYPES[(Math.random()*TYPES.length)|0],
+        size: 40 + Math.random()*26, rot: Math.random()*6.28, vr: (Math.random()-0.5)*0.2,
+      });
+    }
+    updatePourParticles(liquidTop);
+    drawPourParticles();
+    drawSerumFilling(bx, bcy, bw, fillRatio);
+    centerText("세럼에 담는 중…", "");
+    if (t > CFG.POUR_MS) { pourPs = []; sfxChime(); setState(STATE.ROTATING); }
+
+  } else if (state === STATE.ROTATING){
+    // 검정 제품 배경 위에서 세럼이 360도 회전 (1.7배속 → 한 바퀴 후 바로 전환)
+    spinVideo.playbackRate = 1.7;
+    spinVideo.play().catch(()=>{});      // 매 프레임 시도(멈춤 방지)
+    drawProductBG(1);
+    drawSerumSpin(1);
+    popText("✨ 스무디 세럼 완성! ✨", t);   // 텍스트 한 번 통 튀어오름
+    ctx.save(); ctx.textAlign="center"; ctx.fillStyle="rgba(255,255,255,.9)";
+    ctx.font='600 24px -apple-system,"Apple SD Gothic Neo",sans-serif';
+    ctx.fillText(scoreLine(), W/2, 182);     // @아이디 · 초수 · 등수
+    ctx.restore();
+    if (t > CFG.ROTATE_MS) setState(STATE.DISSOLVE);
+
+  } else if (state === STATE.DISSOLVE){
+    // 제품 → 내 얼굴(흑백)로 디졸브
+    const prog = Math.min(1, t / CFG.DISSOLVE_MS);
+    drawFaceBG(0);                       // 흑백 얼굴(베이스)
+    drawProductBG(1 - prog);             // 제품 배경 페이드아웃
+    drawSerumSpin(1 - prog);             // 회전 세럼 페이드아웃
+    if (t > CFG.DISSOLVE_MS) { try { spinVideo.pause(); } catch(e){} setState(STATE.FACE); }
+
+  } else if (state === STATE.FACE){
+    // 흑백 얼굴 + 스포이드. '실제 얼굴'에 닿은 지점만 컬러+발광(미백).
+    const onFace = (x,y) => (faceLandmarker ? inFacePoly(x,y) : inFaceZone(x,y));
+    let touching = false;
+    for (const h of hands){
+      const tip = h.points[8];          // 검지 손가락 끝
+      if (onFace(tip.x, tip.y)){
+        touching = true;
+        addGlowSpot(tip.x, tip.y);
+        if (now - lastDrop > 180){ lastDrop = now; spawnFaceDropAt(tip); faceDropCount++; }
+      }
+    }
+    if (touching) touchProgress = Math.min(1, touchProgress + 0.02);
+    updateGlowSpots();
+    drawFaceLocalized(Math.min(0.5, touchProgress*0.6));
+    updateSerumDrops(); drawSerumDrops();
+    for (const h of hands) drawDropper(h);     // 스포이드 커서
+    drawLeaderboard();                          // 변신 단계에 순위 표시
+    const faceVisible = faceLandmarker ? !!facePoly : true;
+    if (!faceVisible)
+      centerText("얼굴이 화면 가운데에 보이게 해주세요 🙂", "");
+    else if (faceDropCount < 1)
+      centerText("스포이드를 얼굴에 톡톡 떨어뜨려 보세요 💧", "");
+    else
+      centerText("✨ 세럼이 스며드는 중… ✨", "");
+    // 몇 방울만 떨어뜨리면 → 랜덤 과일 얼굴로 변신 (닿기 전엔 계속 대기, 자동 종료 X)
+    if (faceDropCount >= 3){ sfxTransform(); setState(STATE.FRUITFACE); }
+
+  } else if (state === STATE.FRUITFACE){
+    // 어노잉오렌지: 웹캠(사람들) 배경 + 과일 + 실제 눈코입
+    drawFruitFace();
+    drawLeaderboard();                          // 순위 유지
+    centerText("🍊 변신 완료!", "");
+    if (t > 2400){ sfxDing(); setState(STATE.POSTER); }
+
+  } else if (state === STATE.POSTER){
+    // 웹캠(사람들) 배경 + 변신 얼굴 + 안내 스티커 (작게)
+    drawFruitFace();
+    stickerText("아래 스무디 세럼 테스터를 흔들어 써보세요!", t, H*0.80, 0.7);
+    drawLeaderboard();                          // 순위(팝업)
+    if (!posterDinged){ posterDinged = true; }
+    // 하단 안내: 엔터로만 다음 세션
+    ctx.save(); ctx.textAlign="center"; ctx.textBaseline="middle";
+    const blink = 0.55 + 0.45*Math.sin(now*0.006);
+    ctx.shadowColor="rgba(0,0,0,.6)"; ctx.shadowBlur=12; ctx.shadowOffsetY=3;
+    ctx.fillStyle = `rgba(255,255,255,${blink})`;
+    ctx.font=`700 ${Math.round(Math.min(W*0.032,26))}px -apple-system,"Apple SD Gothic Neo",sans-serif`;
+    ctx.fillText("다음 도전은  Enter ⏎  를 눌러주세요", W/2, H*0.93);
+    ctx.restore();
+
+  } else if (state === STATE.FADE){
+    const prog = Math.min(1, t / CFG.FADE_MS);
+    drawFaceLocalized(Math.min(0.5, touchProgress*0.6));
+    updateSerumDrops(); drawSerumDrops();
+    ctx.fillStyle=`rgba(0,0,0,${prog})`; ctx.fillRect(0,0,W,H);
+    if (t > CFG.FADE_MS) goIdle();        // 대기 화면으로
+  }
+}
+
+/* =========================================================================
+   시작
+   ========================================================================= */
+document.getElementById("startBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("startBtn");
+  btn.textContent = "카메라 준비 중…"; btn.disabled = true;
+  initAudio();   // 사용자 제스처에서 오디오 컨텍스트 시작
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 1280, height: 720, facingMode: "user" }, audio:false
+    });
+    video.srcObject = stream;
+    await video.play();
+    await initHands();
+    // 회전 영상 워밍업(캐시 무시 + 디코드 시작) → 회전 구간에서 멈춤 없이 재생
+    try {
+      spinVideo.src = "assets/serum_spin.mp4?v=" + Date.now();
+      spinVideo.load();
+      await spinVideo.play().then(()=>{ spinVideo.pause(); spinVideo.currentTime = 0; }).catch(()=>{});
+    } catch(e){}
+    overlay.style.opacity = "0";
+    setTimeout(()=> overlay.style.display="none", 600);
+    goIdle();                          // 대기 화면(아이디 입력)으로
+    requestAnimationFrame(loop);
+  } catch (e){
+    btn.disabled=false; btn.textContent="다시 시도";
+    showErr("카메라를 시작할 수 없습니다: " + (e && e.message ? e.message : e));
+  }
+});
+
+// 아이디 입력 후 시작
+// Enter: 대기→시작 / 포스터→다음 세션
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  if (state === STATE.IDLE) beginRound();
+  else if (state === STATE.POSTER) goIdle();
+});
+
+// 미전송 기록 재전송: 로드 즉시 + 30초마다 + 앱 복귀 시
+flushQueue();
+setInterval(flushQueue, 30000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) flushQueue(); });
+
+</script>
+</body>
+</html>
