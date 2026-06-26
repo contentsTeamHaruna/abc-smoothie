@@ -1386,17 +1386,17 @@ function stickerText(text, t, cy, maxWidthFrac = 0.9){
 function drawStartText(t){ stickerText("START", t, H*0.42); }
 
 /* 랭킹표(우상단) — 변신 단계에서 표시 */
-// 시상 티어: 1등 1명 / 2등 5명(2~6위) / 3등 10명(7~16위)
+// 시상 티어(비중복): 1등 1명(1위) / TOP5 4명(2~5위) / TOP10 5명(6~10위)
 const PRIZE_TIERS = [
-  { label:"🥇 1등", color:"#ffd54a", from:0,  to:1  },
-  { label:"🥈 2등", color:"#d7dee8", from:1,  to:6  },
-  { label:"🥉 3등", color:"#e3ad7e", from:6,  to:16 },
+  { label:"🥇 1등",   amount:"10만원", color:"#ffd54a", from:0, to:1  },
+  { label:"🥈 TOP 5", amount:"3만원",  color:"#d7dee8", from:1, to:5  },
+  { label:"🥉 TOP 10",amount:"1만원",  color:"#e3ad7e", from:5, to:10 },
 ];
 function myTierLabel(){
   const r = playerRank;
-  if (r <= 1) return "🥇 1등";
-  if (r <= 6) return "🥈 2등";
-  if (r <= 16) return "🥉 3등";
+  if (r <= 1)  return "🥇 1등";
+  if (r <= 5)  return "🥈 TOP 5";
+  if (r <= 10) return "🥉 TOP 10";
   return "순위권 밖";
 }
 function drawLeaderboard(){
@@ -1404,7 +1404,7 @@ function drawLeaderboard(){
   // 그릴 행 구성
   const rows = [];
   for (const ti of PRIZE_TIERS){
-    rows.push({ h:true, label:ti.label, color:ti.color, count:ti.to-ti.from });
+    rows.push({ h:true, label:ti.label, amount:ti.amount, color:ti.color, count:ti.to-ti.from });
     const slice = lb.slice(ti.from, ti.to);
     if (slice.length === 0) rows.push({ empty:true });
     else slice.forEach((e, j) => rows.push({ e, rank: ti.from+j+1 }));
@@ -1423,7 +1423,7 @@ function drawLeaderboard(){
   for (const r of rows){
     if (r.h){
       ctx.textAlign="left"; ctx.fillStyle = r.color; ctx.font = '800 17px -apple-system,"Apple SD Gothic Neo",sans-serif';
-      ctx.fillText(`${r.label}  (${r.count}명)`, x+16, cy + headH/2);
+      ctx.fillText(`${r.label} · ${r.amount} (${r.count}명)`, x+16, cy + headH/2);
       cy += headH;
     } else if (r.empty){
       ctx.textAlign="left"; ctx.fillStyle="rgba(255,255,255,.4)"; ctx.font='600 14px -apple-system,"Apple SD Gothic Neo",sans-serif';
