@@ -42,27 +42,31 @@
   #igInput::placeholder { color: rgba(255,255,255,.4); }
   #igPanel {
     display: none; position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%);
-    z-index: 45; flex-direction: column; align-items: center; gap: 16px;
-    padding: 34px 40px; border-radius: 24px;
-    background: rgba(10,4,14,.72); border: 1px solid rgba(255,255,255,.18);
-    box-shadow: 0 20px 60px rgba(0,0,0,.5);
-    font-family: -apple-system,"Pretendard","Apple SD Gothic Neo",sans-serif;
+    z-index: 45; flex-direction: column; align-items: center; gap: 9px;
+    padding: 30px 46px; border-radius: 26px;
+    background: rgba(10,4,14,.82); border: 1px solid rgba(255,255,255,.18);
+    box-shadow: 0 20px 60px rgba(0,0,0,.55);
+    font-family: -apple-system,"Pretendard","Apple SD Gothic Neo",sans-serif; text-align: center;
   }
   #igPanel.show { display: flex; }
   #igPanel, #igInput { cursor: auto; }
   #igInput { cursor: text; }
-  .ig-gift { color: #ffd54a; font-size: 24px; font-weight: 800; }
-  .ig-sub  { color: #c9b8d6; font-size: 17px; font-weight: 600; max-width: 460px; text-align:center; line-height:1.5; }
-  .ig-dm { color: #fff; font-size: 18px; font-weight: 600; }
+  .ig-h1 { color: #fff; font-size: 30px; font-weight: 900; letter-spacing: -.5px; }
+  .ig-h2 { color: #c9b8d6; font-size: 16px; font-weight: 600; }
+  .ig-div { width: 100%; height: 1px; margin: 5px 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,.4), transparent); }
+  .ig-benefit { color: #ffd54a; font-size: 20px; font-weight: 800; }
+  .ig-plead { color: #fff; font-size: 16px; font-weight: 600; }
+  .ig-plead b { color: #ffd54a; }
+  .ig-prizes { display: flex; flex-direction: column; gap: 7px; width: 320px; margin: 2px 0; }
+  .ig-prow { display: flex; justify-content: space-between; align-items: center;
+             padding: 9px 18px; border-radius: 12px; background: rgba(255,255,255,.06); }
+  .ig-prow span { color: #fff; font-size: 17px; font-weight: 700; }
+  .ig-prow b { color: #ffd54a; font-size: 19px; font-weight: 800; }
+  .ig-dm { color: #fff; font-size: 16px; font-weight: 600; }
   .ig-dm b { color: #7fd1ff; }
-  .ig-title { color: #fff; font-size: 22px; font-weight: 700; margin-top: 6px; }
+  .ig-title { color: #fff; font-size: 18px; font-weight: 700; margin-top: 2px; }
   .ig-title b { color: #ff7ab0; }
-  #igStart {
-    padding: 16px 44px; font-size: 22px; font-weight: 800; color: #2a0f2f;
-    background: linear-gradient(135deg,#ff7a59,#ff3b8d,#9b59ff); border: none; border-radius: 999px;
-    cursor: pointer; box-shadow: 0 10px 36px rgba(255,59,141,.45); letter-spacing: .5px;
-  }
-  #igStart:active { transform: scale(.96); }
   #hint { position: fixed; left: 0; right: 0; bottom: 34px; text-align: center; z-index: 40;
           font-family: -apple-system,"Pretendard","Apple SD Gothic Neo",sans-serif;
           color: rgba(255,255,255,.55); font-size: 16px; letter-spacing: .3px;
@@ -92,10 +96,21 @@
 
 <!-- 대기 화면(과일 떨어지는 위)에서 아이디 입력 -->
 <div id="igPanel">
-  <div class="ig-gift">🎁 타임어택 1·2·3등에게 선물을 드려요!</div>
-  <div class="ig-dm">📩 최종 결과는 <b>DM</b>으로 알려드려요!</div>
-  <div class="ig-title">⏱ 인스타 아이디를 입력하고 <b>Enter ⏎</b> 로 시작!</div>
+  <div class="ig-h1">🥤 ABC 스무디 타임어택</div>
+  <div class="ig-h2">손바닥으로 스무디 만들고, 가장 빠른 기록에 도전!</div>
+  <div class="ig-div"></div>
+  <div class="ig-benefit">🎁 참여하면 이런 혜택이!</div>
+  <div class="ig-div"></div>
+  <div class="ig-plead">🏆 빠른 기록일수록 → <b>쿠팡 상품권 GET</b></div>
+  <div class="ig-prizes">
+    <div class="ig-prow"><span>🥇 1등</span><b>10만원</b></div>
+    <div class="ig-prow"><span>🥈 TOP 5</span><b>3만원</b></div>
+    <div class="ig-prow"><span>🥉 TOP 10</span><b>1만원</b></div>
+  </div>
+  <div class="ig-div"></div>
+  <div class="ig-dm">📩 당첨 결과는 인스타 <b>DM</b>으로 안내!</div>
   <input id="igInput" type="text" placeholder="@instagram_id" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="30" />
+  <div class="ig-title">⏱ 인스타 아이디 입력하고 <b>Enter ⏎</b> 로 START</div>
 </div>
 
 <!-- MediaPipe Tasks Vision (손 추적) -->
@@ -1633,7 +1648,7 @@ function drawFrame(now){
     }
     glassOverlay(it);
     ctx.restore();
-    centerText("믹서기 가동! 스티커를 가는 중…", "");
+    centerText("믹서기 가동! 스무디 만드는 중…", "");
     if (t > CFG.BLEND_MS) { caughtItems = []; sfxPour(); setState(STATE.POURING); }
 
   } else if (state === STATE.POURING){
